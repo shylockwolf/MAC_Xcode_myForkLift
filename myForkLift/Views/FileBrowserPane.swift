@@ -308,41 +308,27 @@ struct FileBrowserPane: View {
             VStack(spacing: 0) {
                 // 可点击的路径显示栏
                 HStack {
-                    HStack(spacing: 4) {
-                        let pathComponents = getPathComponents(currentURL)
-                        
-                        ForEach(0..<pathComponents.count, id: \.self) { index in
-                            let component = pathComponents[index]
-                            
-                            PathSegmentView(
-                                name: component.name,
-                                icon: component.icon,
-                                onTap: {
-                                    onActivate()
-                                    NSLog("📍 Path segment clicked: \(component.name), URL: \(component.url.path)")
-                                    currentURL = component.url
-                                }
-                            )
-                            
-                            // 分隔符 - 使用 SF Symbols
-                            if index < pathComponents.count - 1 {
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(.secondary)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .padding(.horizontal, 2)
-                            }
+                    let pathComponents = getPathComponents(currentURL)
+                    PathBarView(
+                        components: pathComponents,
+                        onActivate: onActivate,
+                        setURL: { url in
+                            NSLog("📍 Path segment clicked: \(url.path)")
+                            currentURL = url
                         }
-                    }
-                    .padding(.vertical, 4)
+                    )
+                    .frame(height: 24)
                     
                     Spacer()
                     Text("\(items.count) items")
                         .font(.caption)
+                        .lineLimit(1)
                         .foregroundColor(.primary)
                 }
                 .padding(.horizontal, 8)
                 .background(Color(.controlBackgroundColor))
                 .contentShape(Rectangle())
+                .frame(height: 24)
                 
                 Divider()
                 
@@ -725,6 +711,7 @@ struct PathSegmentView: View {
             Text(name)
                 .font(.system(size: 12))
                 .foregroundColor(.primary)
+                .lineLimit(1)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
@@ -739,5 +726,135 @@ struct PathSegmentView: View {
         .onHover { hovering in
             isHovering = hovering
         }
+    }
+}
+
+/// 路径栏视图：当路径过长时，自动从左侧用“...”替换，保证右侧末端目录完整显示
+struct PathBarView: View {
+    struct DisplayComponent: Identifiable {
+        let id = UUID()
+        let name: String
+        let url: URL
+        let icon: NSImage?
+    }
+    
+    let components: [(name: String, url: URL, icon: NSImage?)]
+    let onActivate: () -> Void
+    let setURL: (URL) -> Void
+    
+    private let font: NSFont = .systemFont(ofSize: 12)
+    private let chevronWidth: CGFloat = 12
+    private let iconWidth: CGFloat = 16
+    private let segmentHPadding: CGFloat = 12 // 左右各6
+    private let iconTextSpacing: CGFloat = 4
+    
+    var body: some View {
+        GeometryReader { geo in
+            let availableWidth = geo.size.width
+            let display = computeDisplay(components: components, availableWidth: availableWidth)
+            
+            HStack(spacing: 4) {
+                ForEach(Array(display.enumerated()), id: \.element.id) { idx, comp in
+                    PathSegmentView(
+                        name: comp.name,
+                        icon: comp.name == "…" ? nil : comp.icon,
+                        onTap: {
+                            onActivate()
+                            setURL(comp.url)
+                        }
+                    )
+                    
+                    if idx < display.count - 1 {
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 10, weight: .medium))
+                            .padding(.horizontal, 2)
+                    }
+                }
+            }
+        }
+        .frame(height: 24)
+    }
+    
+    private func textWidth(_ text: String) -> CGFloat {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let size = (text as NSString).size(withAttributes: attrs)
+        return ceil(size.width)
+    }
+    
+    private func segmentWidth(name: String, hasIcon: Bool) -> CGFloat {
+        var width = segmentHPadding + textWidth(name)
+        if hasIcon {
+            width += iconWidth + iconTextSpacing
+        }
+        return width
+    }
+    
+    private func totalWidth(of comps: [DisplayComponent]) -> CGFloat {
+        guard !comps.isEmpty else { return 0 }
+        let segmentsWidth = comps.enumerated().reduce(CGFloat(0)) { acc, pair in
+            let idx = pair.offset
+            let c = pair.element
+            let w = segmentWidth(name: c.name, hasIcon: c.icon != nil && c.name != "…")
+            let sep = idx < comps.count - 1 ? chevronWidth : 0
+            return acc + w + sep
+        }
+        return segmentsWidth
+    }
+    
+    private func truncateMiddle(_ text: String, toWidth target: CGFloat) -> String {
+        if textWidth(text) <= target { return text }
+        let scalars = Array(text)
+        if scalars.count <= 3 { return scalars.map(String.init).joined() }
+        
+        var left = Int(Double(scalars.count) * 0.45)
+        var right = scalars.count - left
+        left = max(1, left)
+        right = max(1, right)
+        
+        func build(_ l: Int, _ r: Int) -> String {
+            let prefix = String(scalars.prefix(l))
+            let suffix = String(scalars.suffix(r))
+            return prefix + "..." + suffix
+        }
+        
+        var current = build(left, right)
+        while textWidth(current) > target && left > 1 && right > 1 {
+            left -= 1
+            right -= 1
+            current = build(left, right)
+        }
+        return current
+    }
+    
+    private func computeDisplay(components: [(name: String, url: URL, icon: NSImage?)], availableWidth: CGFloat) -> [DisplayComponent] {
+        var display: [DisplayComponent] = components.map { DisplayComponent(name: $0.name, url: $0.url, icon: $0.icon) }
+        var width = totalWidth(of: display)
+        if width <= availableWidth { return display }
+        
+        let ellipsisWidth = segmentWidth(name: "…", hasIcon: false)
+        
+        var i = 0
+        while i < display.count - 1 && width > availableWidth {
+            let original = display[i]
+            let originalWidth = segmentWidth(name: original.name, hasIcon: original.icon != nil)
+            display[i] = DisplayComponent(name: "…", url: original.url, icon: nil)
+            width = width - originalWidth + ellipsisWidth
+            i += 1
+        }
+        
+        if width > availableWidth, i < display.count {
+            let idx = i
+            let comp = display[idx]
+            let currentSegWidth = segmentWidth(name: comp.name, hasIcon: comp.icon != nil)
+            let needReduce = width - availableWidth
+            let targetSegWidth = max(ellipsisWidth, currentSegWidth - needReduce)
+            let base = segmentHPadding + (comp.icon != nil ? (iconWidth + iconTextSpacing) : 0)
+            let targetTextWidth = max(0, targetSegWidth - base)
+            let newName = truncateMiddle(comp.name, toWidth: targetTextWidth)
+            display[idx] = DisplayComponent(name: newName, url: comp.url, icon: comp.icon)
+        }
+        
+        return display
     }
 }
