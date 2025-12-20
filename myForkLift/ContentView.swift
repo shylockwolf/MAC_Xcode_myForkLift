@@ -302,6 +302,8 @@ struct ContentView: View {
         mainContentView
             .onAppear {
                 setupAppearance()
+                // 初始化历史记录
+                viewModel.initializeHistory(leftURL: leftPaneURL, rightURL: rightPaneURL)
             }
             .withProgressWindow(
                 isPresented: $isProgressWindowPresented,
@@ -333,9 +335,13 @@ struct ContentView: View {
         .clipped() // 确保内容不会超出容器边界
         .frame(maxWidth: .infinity, alignment: .leading) // 确保内容左对齐，防止向左偏移
         .onChange(of: leftPaneURL) { newURL in
+            // 添加到历史记录
+            viewModel.addToHistory(url: newURL, for: .left)
             handleURLChange(newURL, pane: .left)
         }
         .onChange(of: rightPaneURL) { newURL in
+            // 添加到历史记录
+            viewModel.addToHistory(url: newURL, for: .right)
             handleURLChange(newURL, pane: .right)
         }
         .onChange(of: leftShowFileSize) { _ in saveFileDisplayOptions() }
@@ -352,11 +358,22 @@ struct ContentView: View {
             activePane: viewModel.activePane,
             selectedCount: viewModel.getCurrentSelectedItems().count,
             isShowingHiddenFiles: viewModel.activePane == .left ? viewModel.leftShowHiddenFiles : viewModel.rightShowHiddenFiles,
+            canGoBack: viewModel.canGoBack(for: viewModel.activePane),
             onExit: {
                 NSApplication.shared.terminate(nil)
             },
             onSelectPane: { pane in
                 viewModel.setActivePane(pane)
+            },
+            onGoBack: {
+                // 实现返回上一个目录功能
+                if let previousURL = viewModel.goBackInHistory(for: viewModel.activePane) {
+                    if viewModel.activePane == .left {
+                        leftPaneURL = previousURL
+                    } else {
+                        rightPaneURL = previousURL
+                    }
+                }
             },
             onCopy: {
                 copyItem()

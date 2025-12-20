@@ -24,6 +24,21 @@ final class ContentViewModel: ObservableObject {
     /// 用于触发文件列表刷新的标记
     @Published var refreshTrigger: UUID = UUID()
     
+    // MARK: - 目录历史记录管理
+    
+    /// 历史记录最大长度
+    private let maxHistoryLength = 20
+    
+    /// 左侧面板目录历史记录
+    private var leftHistory: [URL] = []
+    /// 左侧面板当前历史记录索引
+    private var leftHistoryIndex: Int = -1
+    
+    /// 右侧面板目录历史记录
+    private var rightHistory: [URL] = []
+    /// 右侧面板当前历史记录索引
+    private var rightHistoryIndex: Int = -1
+    
     // UserDefaults 键（窗口路径、位置和显示选项）
     let favoritesKey = "DWBrowserFavorites"
     let leftPaneURLKey = "DWBrowserLeftPaneURL"
@@ -225,6 +240,92 @@ final class ContentViewModel: ObservableObject {
     /// 触发文件列表刷新
     func triggerRefresh() {
         refreshTrigger = UUID()
+    }
+    
+    // MARK: - 目录历史记录管理方法
+    
+    /// 将URL添加到指定面板的历史记录
+    func addToHistory(url: URL, for pane: Pane) {
+        switch pane {
+        case .left:
+            // 如果当前不是最新的历史记录，截断历史记录
+            if leftHistoryIndex < leftHistory.count - 1 {
+                leftHistory = Array(leftHistory[0...leftHistoryIndex])
+            }
+            
+            // 如果URL与当前历史记录最后一项相同，不重复添加
+            if let lastURL = leftHistory.last, lastURL == url {
+                return
+            }
+            
+            // 添加新URL
+            leftHistory.append(url)
+            leftHistoryIndex = leftHistory.count - 1
+            
+            // 限制历史记录长度
+            if leftHistory.count > maxHistoryLength {
+                leftHistory.removeFirst()
+                leftHistoryIndex -= 1
+            }
+            
+        case .right:
+            // 如果当前不是最新的历史记录，截断历史记录
+            if rightHistoryIndex < rightHistory.count - 1 {
+                rightHistory = Array(rightHistory[0...rightHistoryIndex])
+            }
+            
+            // 如果URL与当前历史记录最后一项相同，不重复添加
+            if let lastURL = rightHistory.last, lastURL == url {
+                return
+            }
+            
+            // 添加新URL
+            rightHistory.append(url)
+            rightHistoryIndex = rightHistory.count - 1
+            
+            // 限制历史记录长度
+            if rightHistory.count > maxHistoryLength {
+                rightHistory.removeFirst()
+                rightHistoryIndex -= 1
+            }
+        }
+    }
+    
+    /// 返回指定面板的上一个目录
+    func goBackInHistory(for pane: Pane) -> URL? {
+        switch pane {
+        case .left:
+            if canGoBack(for: .left) {
+                leftHistoryIndex -= 1
+                return leftHistory[leftHistoryIndex]
+            }
+            return nil
+            
+        case .right:
+            if canGoBack(for: .right) {
+                rightHistoryIndex -= 1
+                return rightHistory[rightHistoryIndex]
+            }
+            return nil
+        }
+    }
+    
+    /// 检查指定面板是否可以返回上一个目录
+    func canGoBack(for pane: Pane) -> Bool {
+        switch pane {
+        case .left:
+            return leftHistoryIndex > 0
+        case .right:
+            return rightHistoryIndex > 0
+        }
+    }
+    
+    /// 初始化历史记录（应用启动或重置时调用）
+    func initializeHistory(leftURL: URL, rightURL: URL) {
+        leftHistory = [leftURL]
+        leftHistoryIndex = 0
+        rightHistory = [rightURL]
+        rightHistoryIndex = 0
     }
 }
 

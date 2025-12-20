@@ -13,9 +13,11 @@ struct MainToolbarView: View {
     let activePane: Pane
     let selectedCount: Int
     let isShowingHiddenFiles: Bool
+    let canGoBack: Bool
     
     let onExit: () -> Void
     let onSelectPane: (Pane) -> Void
+    let onGoBack: () -> Void
     
     let onCopy: () -> Void
     let onDelete: () -> Void
@@ -60,6 +62,15 @@ struct MainToolbarView: View {
             .cornerRadius(6)
             
             Divider()
+            
+            // 返回按钮
+            Button(action: {
+                onGoBack()
+            }) {
+                Image(systemName: "chevron.backward")
+            }
+            .help("返回上一级目录")
+            .disabled(!canGoBack)
             
             // 文件操作按钮
             Group {
