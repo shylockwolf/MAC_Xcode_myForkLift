@@ -24,6 +24,60 @@ extension ContentView {
         return isDir.boolValue
     }
     
+    func renameItem() {
+        let selectedItems = Array(viewModel.getCurrentSelectedItems())
+        guard selectedItems.count == 1, let item = selectedItems.first else {
+            return
+        }
+        
+        let oldName = item.lastPathComponent
+        let parentURL = item.deletingLastPathComponent()
+        
+        let textField = NSTextField(string: oldName)
+        textField.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+        
+        let alert = NSAlert()
+        alert.messageText = "重命名"
+        alert.informativeText = "请输入新的名称："
+        alert.accessoryView = textField
+        alert.addButton(withTitle: "确定")
+        alert.addButton(withTitle: "取消")
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+        
+        var newName = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newName.isEmpty else { return }
+        
+        if newName == oldName { return }
+        if newName.contains("/") || newName.contains(":") { 
+            showAlertSimple(title: "重命名失败", message: "名称不能包含 / 或 :")
+            return 
+        }
+        
+        let newURL = parentURL.appendingPathComponent(newName)
+        if FileManager.default.fileExists(atPath: newURL.path) {
+            showAlertSimple(title: "重命名失败", message: "目标名称已存在")
+            return
+        }
+        
+        do {
+            try FileManager.default.moveItem(at: item, to: newURL)
+            
+            switch viewModel.activePane {
+            case .left:
+                viewModel.leftSelectedItems = [newURL]
+            case .right:
+                viewModel.rightSelectedItems = [newURL]
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                viewModel.triggerRefresh()
+            }
+        } catch {
+            showAlertSimple(title: "重命名失败", message: error.localizedDescription)
+        }
+    }
+    
     // 获取文件大小的辅助函数
     func getFileSize(_ url: URL) -> Int64 {
         do {

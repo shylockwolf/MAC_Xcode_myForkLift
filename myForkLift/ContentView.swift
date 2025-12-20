@@ -373,6 +373,41 @@ struct ContentView: View {
             onNewFolder: {
                 createNewFolder()
             },
+            onRename: {
+                renameItem()
+            },
+            onSelectAll: {
+                // 实现全部选中/取消选中功能
+                let isLeftActive = viewModel.activePane == .left
+                let currentURL = isLeftActive ? leftPaneURL : rightPaneURL
+                
+                do {
+                    let options: FileManager.DirectoryEnumerationOptions = (isLeftActive ? viewModel.leftShowHiddenFiles : viewModel.rightShowHiddenFiles) ? [] : [.skipsHiddenFiles]
+                    let contents = try FileManager.default.contentsOfDirectory(at: currentURL, includingPropertiesForKeys: [.isDirectoryKey], options: options)
+                    let filteredContents = (isLeftActive ? viewModel.leftShowHiddenFiles : viewModel.rightShowHiddenFiles) ? contents : contents.filter { !$0.lastPathComponent.hasPrefix(".") }
+                    
+                    let allFilesCount = filteredContents.count
+                    let currentSelectedCount = isLeftActive ? viewModel.leftSelectedItems.count : viewModel.rightSelectedItems.count
+                    
+                    if currentSelectedCount == allFilesCount {
+                        // 已经全部选中，取消全部选中
+                        if isLeftActive {
+                            viewModel.leftSelectedItems.removeAll()
+                        } else {
+                            viewModel.rightSelectedItems.removeAll()
+                        }
+                    } else {
+                        // 没有全部选中，选中所有文件
+                        if isLeftActive {
+                            viewModel.leftSelectedItems = Set(filteredContents)
+                        } else {
+                            viewModel.rightSelectedItems = Set(filteredContents)
+                        }
+                    }
+                } catch {
+                    print("❌ 获取目录内容失败: \(error.localizedDescription)")
+                }
+            },
             onToggleHiddenFiles: {
                 if viewModel.activePane == .left {
                     viewModel.leftShowHiddenFiles.toggle()

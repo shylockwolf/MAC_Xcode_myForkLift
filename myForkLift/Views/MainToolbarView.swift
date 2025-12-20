@@ -22,6 +22,8 @@ struct MainToolbarView: View {
     let onMove: () -> Void
     let onClearSelection: () -> Void
     let onNewFolder: () -> Void
+    let onRename: () -> Void
+    let onSelectAll: () -> Void
     
     let onToggleHiddenFiles: () -> Void
     
@@ -117,6 +119,21 @@ struct MainToolbarView: View {
                     Image(systemName: "folder.badge.plus")
                 }
                 .help("建立新文件夹")
+                
+                Button(action: {
+                    onRename()
+                }) {
+                    Image(systemName: "pencil")
+                }
+                .help("重命名")
+                .disabled(selectedCount != 1)
+                
+                Button(action: {
+                    onSelectAll()
+                }) {
+                    Image(systemName: "checkmark.rectangle.fill")
+                }
+                .help("全部选中/取消选中")
             }
             
             Divider()
@@ -136,4 +153,3 @@ struct MainToolbarView: View {
         .background(Color(.controlBackgroundColor))
     }
 }
-
