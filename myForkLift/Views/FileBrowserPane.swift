@@ -315,7 +315,8 @@ struct FileBrowserPane: View {
                         setURL: { url in
                             NSLog("📍 Path segment clicked: \(url.path)")
                             currentURL = url
-                        }
+                        },
+                        isActive: isActive
                     )
                     .frame(height: 24)
                     
@@ -696,6 +697,7 @@ struct PathSegmentView: View {
     let name: String
     let icon: NSImage?
     let onTap: () -> Void
+    let isCurrentDirectory: Bool
     
     @State private var isHovering = false
     
@@ -710,14 +712,18 @@ struct PathSegmentView: View {
             
             Text(name)
                 .font(.system(size: 12))
-                .foregroundColor(.primary)
+                .foregroundColor(isCurrentDirectory ? .white : .primary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(isHovering ? Color(.controlAccentColor).opacity(0.2) : Color.clear)
+                .fill(
+                    isCurrentDirectory ? 
+                    Color(.controlAccentColor) : 
+                    (isHovering ? Color(.controlAccentColor).opacity(0.2) : Color.clear)
+                )
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -741,6 +747,7 @@ struct PathBarView: View {
     let components: [(name: String, url: URL, icon: NSImage?)]
     let onActivate: () -> Void
     let setURL: (URL) -> Void
+    let isActive: Bool
     
     private let font: NSFont = .systemFont(ofSize: 12)
     private let chevronWidth: CGFloat = 12
@@ -761,7 +768,8 @@ struct PathBarView: View {
                         onTap: {
                             onActivate()
                             setURL(comp.url)
-                        }
+                        },
+                        isCurrentDirectory: isActive && idx == display.count - 1
                     )
                     
                     if idx < display.count - 1 {
