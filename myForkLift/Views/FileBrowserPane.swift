@@ -658,18 +658,8 @@ struct FileBrowserPane: View {
                 }
             }
             
-            // 透明点击覆盖层 - 放在最顶层，但只有非激活时才显示
-            if !isActive {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        print("🎯🎯🎯 空白区域被点击了！当前状态: 未激活")
-                        NSLog("🎯🎯🎯 空白区域被点击了！当前状态: 未激活")
-                        print("🔥🔥🔥 空白区域触发激活")
-                        onActivate()
-                        selectedItems.removeAll()
-                    }
-            }
+            // 移除了透明点击覆盖层，因为它会拦截文件点击事件
+            // 文件列表和路径栏的点击事件会自行处理激活逻辑
         }
         .frame(minWidth: 300, minHeight: 200)
         .onAppear {
