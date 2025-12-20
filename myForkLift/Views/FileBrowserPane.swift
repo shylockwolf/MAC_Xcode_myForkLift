@@ -10,6 +10,14 @@ import Foundation
 import AppKit
 import Combine
 
+/// 排序字段枚举
+enum SortField {
+    case name
+    case type
+    case size
+    case date
+}
+
 /// 文件浏览器面板
 struct FileBrowserPane: View {
     @Binding var currentURL: URL
@@ -35,6 +43,10 @@ struct FileBrowserPane: View {
     @State private var typeColumnWidth: CGFloat = 80
     @State private var sizeColumnWidth: CGFloat = 60
     @State private var dateColumnWidth: CGFloat = 120
+    
+    // 排序状态
+    @State private var sortField: SortField = .name
+    @State private var isAscending: Bool = true
     // 计算内容区域的最小宽度，用于触发横向滚动
     private var contentMinWidth: CGFloat {
         let base: CGFloat = 20 + 20 + nameColumnWidth
@@ -120,7 +132,7 @@ struct FileBrowserPane: View {
         }
     }
     
-    // 获取文件修改日期的辅助函数
+    // 获取文件修改日期的辅助函数（返回格式化字符串）
     private func getFileDate(_ url: URL) -> String {
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -133,6 +145,16 @@ struct FileBrowserPane: View {
             return "未知"
         } catch {
             return "未知"
+        }
+    }
+    
+    // 获取文件修改日期的辅助函数（返回Date对象，用于排序）
+    private func getFileDateModified(_ url: URL) -> Date {
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            return attributes[.modificationDate] as? Date ?? Date.distantPast
+        } catch {
+            return Date.distantPast
         }
     }
     
@@ -279,10 +301,33 @@ struct FileBrowserPane: View {
             let sortedItems = filteredContents.sorted { a, b in
                 let isDirA = isDirectory(a)
                 let isDirB = isDirectory(b)
+                
+                // 首先按目录/文件类型排序（目录总是在前面）
                 if isDirA != isDirB {
                     return isDirA
-                } else {
-                    return a.lastPathComponent.localizedCompare(b.lastPathComponent) == .orderedAscending
+                }
+                
+                // 然后按选定的字段排序
+                switch sortField {
+                case .name:
+                    let result = a.lastPathComponent.localizedCompare(b.lastPathComponent)
+                    return isAscending ? result == .orderedAscending : result == .orderedDescending
+                    
+                case .type:
+                    let typeA = getFileType(a)
+                    let typeB = getFileType(b)
+                    let result = typeA.localizedCompare(typeB)
+                    return isAscending ? result == .orderedAscending : result == .orderedDescending
+                    
+                case .size:
+                    let sizeA = isDirectory(a) ? 0 : getFileSize(a)
+                    let sizeB = isDirectory(b) ? 0 : getFileSize(b)
+                    return isAscending ? sizeA < sizeB : sizeA > sizeB
+                    
+                case .date:
+                    let dateA = getFileDateModified(a)
+                    let dateB = getFileDateModified(b)
+                    return isAscending ? dateA < dateB : dateA > dateB
                 }
             }
             
@@ -408,15 +453,30 @@ struct FileBrowserPane: View {
                                 .fontWeight(.semibold)
                                 .foregroundColor(.primary)
                             Spacer()
+                            if sortField == .name {
+                                Image(systemName: isAscending ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.accentColor)
+                            }
                         }
                         .frame(width: nameColumnWidth)
                         .background(Color(.controlBackgroundColor))
+                        .contentShape(Rectangle())
                         .onHover { isHovering in
                             if isHovering {
                                 NSCursor.pointingHand.set()
                             } else {
                                 NSCursor.arrow.set()
                             }
+                        }
+                        .onTapGesture {
+                            if sortField == .name {
+                                isAscending.toggle()
+                            } else {
+                                sortField = .name
+                                isAscending = false // 第一次点击降序
+                            }
+                            loadItems()
                         }
                         
                         // 分隔线和拖拽区域
@@ -447,15 +507,30 @@ struct FileBrowserPane: View {
                                     .fontWeight(.semibold)
                                     .foregroundColor(.primary)
                                 Spacer()
+                                if sortField == .type {
+                                    Image(systemName: isAscending ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(.accentColor)
+                                }
                             }
                             .frame(width: typeColumnWidth, alignment: .trailing)
                             .background(Color(.controlBackgroundColor))
+                            .contentShape(Rectangle())
                             .onHover { isHovering in
                                 if isHovering {
                                     NSCursor.pointingHand.set()
                                 } else {
                                     NSCursor.arrow.set()
                                 }
+                            }
+                            .onTapGesture {
+                                if sortField == .type {
+                                    isAscending.toggle()
+                                } else {
+                                    sortField = .type
+                                    isAscending = false // 第一次点击降序
+                                }
+                                loadItems()
                             }
                             
                             // 分隔线和拖拽区域
@@ -487,15 +562,30 @@ struct FileBrowserPane: View {
                                     .fontWeight(.semibold)
                                     .foregroundColor(.primary)
                                 Spacer()
+                                if sortField == .size {
+                                    Image(systemName: isAscending ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(.accentColor)
+                                }
                             }
                             .frame(width: sizeColumnWidth)
                             .background(Color(.controlBackgroundColor))
+                            .contentShape(Rectangle())
                             .onHover { isHovering in
                                 if isHovering {
                                     NSCursor.pointingHand.set()
                                 } else {
                                     NSCursor.arrow.set()
                                 }
+                            }
+                            .onTapGesture {
+                                if sortField == .size {
+                                    isAscending.toggle()
+                                } else {
+                                    sortField = .size
+                                    isAscending = false // 第一次点击降序
+                                }
+                                loadItems()
                             }
                             
                             // 分隔线和拖拽区域
@@ -527,15 +617,30 @@ struct FileBrowserPane: View {
                                     .fontWeight(.semibold)
                                     .foregroundColor(.primary)
                                 Spacer()
+                                if sortField == .date {
+                                    Image(systemName: isAscending ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(.accentColor)
+                                }
                             }
                             .frame(width: dateColumnWidth, alignment: .trailing)
                             .background(Color(.controlBackgroundColor))
+                            .contentShape(Rectangle())
                             .onHover { isHovering in
                                 if isHovering {
                                     NSCursor.pointingHand.set()
                                 } else {
                                     NSCursor.arrow.set()
                                 }
+                            }
+                            .onTapGesture {
+                                if sortField == .date {
+                                    isAscending.toggle()
+                                } else {
+                                    sortField = .date
+                                    isAscending = false // 第一次点击降序
+                                }
+                                loadItems()
                             }
                         }
                         
