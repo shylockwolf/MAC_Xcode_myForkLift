@@ -88,8 +88,54 @@ extension ContentView {
         }
     }
     
-    // 复制选中文件到另一个窗口激活的目录（支持多选，带进度显示）
+    // 复制选中文件到系统剪贴板
     func copyItem() {
+        // 检查当前激活面板的选中项
+        var sourceItems = Array(viewModel.getCurrentSelectedItems())
+        
+        // 如果当前激活面板没有选中项，检查另一个面板
+        if sourceItems.isEmpty {
+            let otherItems = viewModel.activePane == .left ? 
+                Array(viewModel.rightSelectedItems) : 
+                Array(viewModel.leftSelectedItems)
+            
+            if !otherItems.isEmpty {
+                // 如果另一个面板有选中项，切换激活面板并使用那些选中项
+                viewModel.setActivePane(viewModel.activePane == .left ? .right : .left)
+                sourceItems = otherItems
+            }
+        }
+        
+        guard !sourceItems.isEmpty else {
+            print("❌ 没有选中项可复制")
+            showAlertSimple(title: "复制失败", message: "没有选中项可复制到剪贴板")
+            return
+        }
+        
+        // 将选中的文件URL复制到系统剪贴板
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        // 将URL转换为NSURL数组，因为NSPasteboard需要NSURL类型
+        let nsUrls = sourceItems.map { $0 as NSURL }
+        
+        // 将URL写入剪贴板
+        let success = pasteboard.writeObjects(nsUrls)
+        
+        if success {
+            let count = sourceItems.count
+            let message = count == 1 ? 
+                "已复制1个项目到剪贴板" : 
+                "已复制\(count)个项目到剪贴板"
+            print("✅ \(message)")
+        } else {
+            print("❌ 无法复制到剪贴板")
+            showAlertSimple(title: "复制失败", message: "无法将选中项复制到剪贴板")
+        }
+    }
+    
+    // 复制选中文件到另一个窗口激活的目录（支持多选，带进度显示）
+    func copyToAnotherPane() {
         let sourceItems = Array(viewModel.getCurrentSelectedItems())
         
         guard !sourceItems.isEmpty else {
@@ -777,5 +823,127 @@ extension ContentView {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "确定")
         alert.runModal()
+    }
+    
+    // 粘贴文件（从剪贴板）
+    func pasteItem() {
+        let pasteboard = NSPasteboard.general
+        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] else {
+            print("❌ 剪贴板中没有文件URL")
+            showAlertSimple(title: "粘贴失败", message: "剪贴板中没有可粘贴的文件")
+            return
+        }
+        
+        let targetURL = getCurrentPaneURL()
+        let activePane = viewModel.activePane
+        print("🔥 开始粘贴操作，目标面板: \(activePane == .left ? "左" : "右")，目标目录: \(targetURL.path)")
+        
+        // 确保目标目录存在
+        do {
+            try FileManager.default.createDirectory(at: targetURL, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            print("❌ 无法创建目标目录: \(targetURL.path) - \(error.localizedDescription)")
+            showAlertSimple(title: "粘贴失败", message: "无法访问目标目录: \(error.localizedDescription)")
+            return
+        }
+        
+        var duplicateFiles: [URL] = []
+        for url in urls {
+            let destinationURL = targetURL.appendingPathComponent(url.lastPathComponent)
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                duplicateFiles.append(url)
+            }
+        }
+        
+        var shouldReplaceAll = false
+        if !duplicateFiles.isEmpty {
+            let alert = NSAlert()
+            alert.messageText = "确认覆盖"
+            
+            let duplicateCount = duplicateFiles.count
+            var duplicateInfo = "发现 \(duplicateCount) 个文件在目标位置已存在：\n\n"
+            
+            let displayCount = min(5, duplicateCount)
+            for i in 0..<displayCount {
+                duplicateInfo += "• \(duplicateFiles[i].lastPathComponent)\n"
+            }
+            
+            if duplicateCount > 5 {
+                duplicateInfo += "• ... 还有 \(duplicateCount - 5) 个文件\n"
+            }
+            
+            duplicateInfo += "\n您希望如何处理这些文件？"
+            alert.informativeText = duplicateInfo
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "全部覆盖")
+            alert.addButton(withTitle: "全部放弃")
+            
+            let response = alert.runModal()
+            shouldReplaceAll = (response == .alertFirstButtonReturn)
+        }
+        
+        var successCount = 0
+        var errorMessages: [String] = []
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            for url in urls {
+                let destinationURL = targetURL.appendingPathComponent(url.lastPathComponent)
+                
+                // 检查目标位置是否已存在同名文件
+                let fileExists = FileManager.default.fileExists(atPath: destinationURL.path)
+                
+                if fileExists {
+                    if !shouldReplaceAll {
+                        DispatchQueue.main.async {
+                            errorMessages.append("\(url.lastPathComponent): 用户选择放弃覆盖")
+                        }
+                        continue
+                    }
+                    
+                    // 如果选择覆盖，先删除目标文件
+                    do {
+                        try FileManager.default.removeItem(at: destinationURL)
+                    } catch {
+                        DispatchQueue.main.async {
+                            errorMessages.append("\(url.lastPathComponent): 无法删除已存在的文件: \(error.localizedDescription)")
+                        }
+                        continue
+                    }
+                }
+                
+                do {
+                    // 复制文件
+                    try FileManager.default.copyItem(at: url, to: destinationURL)
+                    
+                    print("✅ 成功粘贴: \(url.lastPathComponent) 到 \(targetURL.path)")
+                    successCount += 1
+                } catch {
+                    let errorMessage = "\(url.lastPathComponent): \(error.localizedDescription)"
+                    DispatchQueue.main.async {
+                        errorMessages.append(errorMessage)
+                    }
+                    print("❌ 粘贴失败: \(errorMessage)")
+                }
+            }
+            
+            DispatchQueue.main.async {
+                if successCount > 0 {
+                    let message = urls.count == 1 ?
+                        "成功粘贴 \(successCount) 个文件" :
+                        "成功粘贴 \(successCount) 个文件（共 \(urls.count) 个）"
+                    print("✅ \(message)")
+                }
+                
+                if !errorMessages.isEmpty {
+                    let fullMessage = "粘贴过程中发生以下错误：\n\n" + errorMessages.joined(separator: "\n")
+                    self.showAlertSimple(title: "部分粘贴失败", message: fullMessage)
+                }
+                
+                // 刷新视图
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.viewModel.triggerRefresh()
+                }
+            }
+        }
     }
 }

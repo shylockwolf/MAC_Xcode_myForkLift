@@ -662,6 +662,12 @@ struct FileBrowserPane: View {
                         HStack(spacing: 8) {
                             // 多选复选框
                             Button(action: {
+                                // 先激活当前面板
+                                if !isActive {
+                                    print("🔥 复选框点击触发激活")
+                                    onActivate()
+                                }
+                                
                                 if selectedItems.contains(item) {
                                     selectedItems.remove(item)
                                 } else {

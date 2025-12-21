@@ -334,6 +334,15 @@ struct ContentView: View {
         .frame(minWidth: 800, maxWidth: .infinity, minHeight: 600, maxHeight: .infinity)
         .clipped() // 确保内容不会超出容器边界
         .frame(maxWidth: .infinity, alignment: .leading) // 确保内容左对齐，防止向左偏移
+        .overlay(
+            // 添加键盘快捷键处理器
+            KeyboardShortcutHandler(
+                onSelectAll: { handleSelectAll() },
+                onCopy: { copyItem() },
+                onPaste: { pasteItem() }
+            )
+            .allowsHitTesting(false) // 允许鼠标事件穿透，不影响底层视图点击
+        )
         .onChange(of: leftPaneURL) { newURL in
             // 添加到历史记录
             viewModel.addToHistory(url: newURL, for: .left)
@@ -376,7 +385,7 @@ struct ContentView: View {
                 }
             },
             onCopy: {
-                copyItem()
+                copyToAnotherPane()
             },
             onDelete: {
                 deleteItem()
@@ -669,6 +678,41 @@ struct ContentView: View {
             rightShowFileDate: rightShowFileDate,
             rightShowFileType: rightShowFileType
         )
+    }
+    
+    // 处理全部选中功能（Command-A快捷键）
+    private func handleSelectAll() {
+        print("🔥 Command-A快捷键被触发！")
+        let isLeftActive = viewModel.activePane == .left
+        print("🔥 当前激活面板：\(isLeftActive ? "左" : "右")")
+        let currentURL = isLeftActive ? leftPaneURL : rightPaneURL
+        
+        do {
+            let options: FileManager.DirectoryEnumerationOptions = (isLeftActive ? viewModel.leftShowHiddenFiles : viewModel.rightShowHiddenFiles) ? [] : [.skipsHiddenFiles]
+            let contents = try FileManager.default.contentsOfDirectory(at: currentURL, includingPropertiesForKeys: [.isDirectoryKey], options: options)
+            let filteredContents = (isLeftActive ? viewModel.leftShowHiddenFiles : viewModel.rightShowHiddenFiles) ? contents : contents.filter { !$0.lastPathComponent.hasPrefix(".") }
+            
+            let allFilesCount = filteredContents.count
+            let currentSelectedCount = isLeftActive ? viewModel.leftSelectedItems.count : viewModel.rightSelectedItems.count
+            
+            if currentSelectedCount == allFilesCount {
+                // 已经全部选中，取消全部选中
+                if isLeftActive {
+                    viewModel.leftSelectedItems.removeAll()
+                } else {
+                    viewModel.rightSelectedItems.removeAll()
+                }
+            } else {
+                // 没有全部选中，选中所有文件
+                if isLeftActive {
+                    viewModel.leftSelectedItems = Set(filteredContents)
+                } else {
+                    viewModel.rightSelectedItems = Set(filteredContents)
+                }
+            }
+        } catch {
+            print("❌ 获取目录内容失败：\(error)")
+        }
     }
 }
 
