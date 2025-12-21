@@ -67,7 +67,7 @@ struct MainToolbarView: View {
             Button(action: {
                 onGoBack()
             }) {
-                Image(systemName: "chevron.backward")
+                Image(systemName: "arrow.uturn.backward.circle")
             }
             .help("返回上一级目录")
             .disabled(!canGoBack)
@@ -78,7 +78,7 @@ struct MainToolbarView: View {
                     onCopy()
                 }) {
                     HStack {
-                        Image(systemName: "doc.on.doc")
+                        Image(systemName: "arrowshape.right.circle")
                         if selectedCount > 1 {
                             Text("(\(selectedCount))")
                                 .font(.caption)
@@ -92,7 +92,7 @@ struct MainToolbarView: View {
                     onDelete()
                 }) {
                     HStack {
-                        Image(systemName: "trash")
+                        Image(systemName: "trash.circle")
                         if selectedCount > 1 {
                             Text("(\(selectedCount))")
                                 .font(.caption)
@@ -106,7 +106,7 @@ struct MainToolbarView: View {
                     onMove()
                 }) {
                     HStack {
-                        Image(systemName: "arrow.right.square")
+                        Image(systemName: "arrowshape.right.circle.fill")
                         if selectedCount > 1 {
                             Text("(\(selectedCount))")
                                 .font(.caption)
@@ -119,7 +119,7 @@ struct MainToolbarView: View {
                 Button(action: {
                     onClearSelection()
                 }) {
-                    Image(systemName: "xmark.square")
+                    Image(systemName: "xmark.circle")
                 }
                 .help("清空所有选择")
                 .disabled(selectedCount == 0)
@@ -134,7 +134,7 @@ struct MainToolbarView: View {
                 Button(action: {
                     onRename()
                 }) {
-                    Image(systemName: "pencil")
+                    Image(systemName: "square.and.pencil.circle")
                 }
                 .help("重命名")
                 .disabled(selectedCount != 1)
@@ -142,7 +142,7 @@ struct MainToolbarView: View {
                 Button(action: {
                     onSelectAll()
                 }) {
-                    Image(systemName: "checkmark.rectangle.fill")
+                    Image(systemName: "checkmark.circle")
                 }
                 .help("全部选中/取消选中")
             }
@@ -163,4 +163,8 @@ struct MainToolbarView: View {
         .padding(.horizontal, 12)
         .background(Color(.controlBackgroundColor))
     }
+}
+
+#Preview {
+    ContentView()
 }
