@@ -9,6 +9,33 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+// 获取主盘剩余空间的辅助函数
+extension URL {
+    func getFreeDiskSpace() -> Int64? {
+        do {
+            let values = try self.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            return values.volumeAvailableCapacityForImportantUsage
+        } catch {
+            print("Error retrieving free disk space: \(error)")
+            return nil
+        }
+    }
+    
+    // 格式化字节数为可读字符串
+    func formatBytes(bytes: Int64) -> String {
+        let units = ["B", "KB", "MB", "GB", "TB"]
+        var size = Double(bytes)
+        var unitIndex = 0
+        
+        while size >= 1024 && unitIndex < units.count - 1 {
+            size /= 1024
+            unitIndex += 1
+        }
+        
+        return String(format: "%.1f %@", size, units[unitIndex])
+    }
+}
+
 struct SidebarView: View {
     @Binding var activePane: Pane
     @Binding var leftPaneURL: URL
@@ -58,6 +85,18 @@ struct SidebarView: View {
                         .foregroundColor(device.deviceType == .usb ? .orange : device.name == "Macintosh HD" ? .blue : .blue)
                     Text(device.name)
                         .lineLimit(1)
+                    
+                    // 显示主盘剩余空间信息
+                    if device.name == "Macintosh HD" {
+                        if let freeSpace = device.url.getFreeDiskSpace() {
+                            Text(device.url.formatBytes(bytes: freeSpace))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .padding(.leading, 8)
+                        }
+                    }
+                    
                     Spacer()
                     
                     // 只为外部设备显示弹出按钮
@@ -125,6 +164,7 @@ struct SidebarView: View {
                             .foregroundColor(.gray.opacity(0.5))
                             .font(.caption)
                         Image(systemName: favorite.icon)
+                        .foregroundColor(.blue)
                         Text(favorite.name)
                         Spacer()
                         // 删除按钮
@@ -164,10 +204,11 @@ struct SidebarView: View {
                 // 拖拽接收区域
                 Rectangle()
                     .fill(Color.gray.opacity(0.1))
-                    .frame(height: 40)
+                    .frame(height: 20)
                     .overlay(
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundColor(.gray)
+                        Image(systemName: "paperclip.circle")
+                            .font(.system(size: 18))
+                            .foregroundColor(.blue)
                     )
                     .cornerRadius(6)
                     .padding(.horizontal, 12)
