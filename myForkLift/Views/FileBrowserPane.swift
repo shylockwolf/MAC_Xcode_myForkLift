@@ -162,24 +162,48 @@ struct FileBrowserPane: View {
     private func getPathComponents(_ url: URL) -> [(name: String, url: URL, icon: NSImage?)] {
         var components: [(name: String, url: URL, icon: NSImage?)] = []
         
-        // 处理本地路径
-        var currentPath = URL(fileURLWithPath: "/")
-        
-        // 获取根卷名称（Macintosh HD 或其他）
-        let rootVolumeName = FileManager.default.displayName(atPath: "/")
-        let rootIcon = NSWorkspace.shared.icon(forFile: "/")
-        
-        // 添加根目录
-        components.append((name: rootVolumeName, url: currentPath, icon: rootIcon))
-        
-        // 获取路径组件（不包括根目录）
-        let pathComponents = url.pathComponents.dropFirst()
-        
-        for component in pathComponents {
-            currentPath.appendPathComponent(component)
-            let displayName = FileManager.default.displayName(atPath: currentPath.path)
-            let icon = NSWorkspace.shared.icon(forFile: currentPath.path)
-            components.append((name: displayName, url: currentPath, icon: icon))
+        // 处理外置设备路径：如果路径包含 /Volumes/，直接从设备名开始显示
+        if url.path.hasPrefix("/Volumes/") {
+            // 分割路径，跳过 /Volumes/
+            let volumeComponents = url.pathComponents.dropFirst(2)
+            
+            if let deviceName = volumeComponents.first {
+                // 外置设备名称
+                let deviceURL = URL(fileURLWithPath: "/Volumes/\(deviceName)")
+                let deviceIcon = NSWorkspace.shared.icon(forFile: deviceURL.path)
+                
+                // 添加设备名作为根路径
+                components.append((name: deviceName, url: deviceURL, icon: deviceIcon))
+                
+                // 添加设备下的子路径
+                var currentPath = deviceURL
+                for component in volumeComponents.dropFirst() {
+                    currentPath.appendPathComponent(component)
+                    let displayName = FileManager.default.displayName(atPath: currentPath.path)
+                    let icon = NSWorkspace.shared.icon(forFile: currentPath.path)
+                    components.append((name: displayName, url: currentPath, icon: icon))
+                }
+            }
+        } else {
+            // 处理本地路径（Macintosh HD）
+            var currentPath = URL(fileURLWithPath: "/")
+            
+            // 获取根卷名称（Macintosh HD 或其他）
+            let rootVolumeName = FileManager.default.displayName(atPath: "/")
+            let rootIcon = NSWorkspace.shared.icon(forFile: "/")
+            
+            // 添加根目录
+            components.append((name: rootVolumeName, url: currentPath, icon: rootIcon))
+            
+            // 获取路径组件（不包括根目录）
+            let pathComponents = url.pathComponents.dropFirst()
+            
+            for component in pathComponents {
+                currentPath.appendPathComponent(component)
+                let displayName = FileManager.default.displayName(atPath: currentPath.path)
+                let icon = NSWorkspace.shared.icon(forFile: currentPath.path)
+                components.append((name: displayName, url: currentPath, icon: icon))
+            }
         }
         
         return components

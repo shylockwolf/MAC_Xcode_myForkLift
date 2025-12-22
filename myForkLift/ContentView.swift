@@ -50,6 +50,17 @@ struct ContentView: View {
     @State var refreshingText = "刷新中…"
     @State var maxProgress: Double = 0.0 // 用于确保进度条只前进不后退
     
+    // 统计相关状态
+    @State var isStatisticsWindowPresented: Bool = false
+    @State var statisticsInfo: StatisticsInfo = StatisticsInfo(
+        totalFiles: 0,
+        totalFolders: 0,
+        totalSize: 0,
+        currentFile: "",
+        progress: 0.0
+    )
+    @State var isStatisticsCancelled: Bool = false
+    
     // 定时刷新相关
     @State var timerCancellable: Cancellable? = nil
     @State var shouldRefreshTimerRun: Bool = false
@@ -325,6 +336,16 @@ struct ContentView: View {
                     // 这里可以添加取消操作的具体逻辑
                 }
             )
+            .withStatisticsWindow(
+                isPresented: $isStatisticsWindowPresented,
+                statisticsInfo: $statisticsInfo,
+                onOK: { 
+                    isStatisticsWindowPresented = false
+                },
+                onCancel: { 
+                    isStatisticsCancelled = true
+                }
+            )
             .overlay(
                 // 复制进度窗口
                 copyProgressOverlay,
@@ -438,6 +459,9 @@ struct ContentView: View {
             },
             onNewFolder: {
                 createNewFolder()
+            },
+            onStatistics: {
+                startStatistics()
             },
             onRename: {
                 renameItem()
@@ -721,6 +745,226 @@ struct ContentView: View {
             rightShowFileDate: rightShowFileDate,
             rightShowFileType: rightShowFileType
         )
+    }
+    
+    // 开始统计选中的文件/目录
+    private func startStatistics() {
+        // 获取当前选中的项目
+        let selectedItems = viewModel.getCurrentSelectedItems()
+        
+        // 统计功能强制包含所有文件（包括隐藏文件），以与Finder行为一致
+        let showHiddenFiles = true
+        
+        if selectedItems.isEmpty {
+            // 如果没有选中项目，使用当前目录
+            let currentURL = viewModel.activePane == .left ? leftPaneURL : rightPaneURL
+            let itemsToScan: [URL] = [currentURL]
+            performStatistics(on: itemsToScan, showHiddenFiles: showHiddenFiles)
+        } else {
+            // 统计选中的项目
+            performStatistics(on: Array(selectedItems), showHiddenFiles: showHiddenFiles)
+        }
+    }
+    
+    // 执行统计操作
+    private func performStatistics(on items: [URL], showHiddenFiles: Bool) {
+        // 重置统计状态
+        isStatisticsCancelled = false
+        statisticsInfo = StatisticsInfo(
+            totalFiles: 0,
+            totalFolders: 0,
+            totalSize: 0,
+            currentFile: "",
+            progress: 0.0
+        )
+        
+        // 显示统计窗口
+        isStatisticsWindowPresented = true
+        
+        // 在后台线程执行统计
+        DispatchQueue.global(qos: .utility).async {
+            // 先计算总共有多少文件需要统计（用于进度计算）
+            var totalFilesToScan: Int64 = 0
+            var totalFoldersToScan: Int64 = 0
+            var isCancelled = false
+            
+            // 第一遍：计算总文件数和文件夹数
+            for item in items {
+                if self.isStatisticsCancelled {
+                    isCancelled = true
+                    break
+                }
+                let result = self.countFilesAndFolders(in: item, isCancelled: &self.isStatisticsCancelled, showHiddenFiles: showHiddenFiles)
+                totalFilesToScan += result.files
+                totalFoldersToScan += result.folders
+            }
+            
+            // 更新文件夹总数
+            DispatchQueue.main.async {
+                self.statisticsInfo.totalFolders = totalFoldersToScan
+            }
+            
+            if isCancelled {
+                return
+            }
+            
+            // 第二遍：实际统计文件大小
+            var scannedFiles: Int64 = 0
+            var totalSize: Int64 = 0
+            
+            for item in items {
+                if self.isStatisticsCancelled {
+                    isCancelled = true
+                    break
+                }
+                
+                self.scanDirectory(
+                    at: item,
+                    totalFilesToScan: totalFilesToScan,
+                    scannedFiles: &scannedFiles,
+                    totalSize: &totalSize,
+                    isCancelled: &self.isStatisticsCancelled,
+                    showHiddenFiles: showHiddenFiles
+                )
+            }
+            
+            if !isCancelled {
+                // 统计完成
+                DispatchQueue.main.async {
+                    self.statisticsInfo.isCompleted = true
+                }
+            }
+        }
+    }
+    
+    // 计算目录中的文件和文件夹数量（递归）
+    private func countFilesAndFolders(in url: URL, isCancelled: inout Bool, showHiddenFiles: Bool) -> (files: Int64, folders: Int64) {
+        if isCancelled {
+            return (0, 0)
+        }
+        
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return (0, 0)
+        }
+        
+        // 如果是文件，返回1个文件，0个文件夹
+        if !isDirectory.boolValue {
+            return (1, 0)
+        }
+        
+        // 如果是目录，检查是否应该跳过
+        if shouldSkipDirectory(url) {
+            return (0, 0)
+        }
+        
+        var files: Int64 = 0
+        var folders: Int64 = 1 // 当前目录也算1个文件夹
+        
+        do {
+            let options: FileManager.DirectoryEnumerationOptions = showHiddenFiles ? [] : [.skipsHiddenFiles]
+            let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: options)
+            
+            for item in contents {
+                if isCancelled {
+                    return (0, 0)
+                }
+                let result = countFilesAndFolders(in: item, isCancelled: &isCancelled, showHiddenFiles: showHiddenFiles)
+                files += result.files
+                folders += result.folders
+            }
+        } catch {
+            print("❌ 计算文件和文件夹数量失败: \(error.localizedDescription)")
+        }
+        
+        return (files, folders)
+    }
+    
+    // 判断是否应该跳过某个目录的统计
+    private func shouldSkipDirectory(_ url: URL) -> Bool {
+        // 不跳过任何目录，让统计与Finder完全一致
+        return false
+    }
+    
+    // 扫描目录并统计文件大小（递归）
+    private func scanDirectory(
+        at url: URL,
+        totalFilesToScan: Int64,
+        scannedFiles: inout Int64,
+        totalSize: inout Int64,
+        isCancelled: inout Bool,
+        showHiddenFiles: Bool
+    ) {
+        if isCancelled {
+            return
+        }
+        
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            return
+        }
+        
+        if !isDirectory.boolValue {
+            // 是文件
+            do {
+                let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                if let size = fileAttributes[.size] as? Int64 {
+                    totalSize += size
+                }
+                
+                // 更新统计信息
+                scannedFiles += 1
+                let progress = Double(scannedFiles) / Double(totalFilesToScan)
+                
+                // 复制值以避免闭包捕获inout参数
+                let currentScannedFiles = scannedFiles
+                let currentTotalSize = totalSize
+                let currentFileName = url.lastPathComponent
+                
+                DispatchQueue.main.async {
+                    self.statisticsInfo.totalFiles = currentScannedFiles
+                    self.statisticsInfo.totalSize = currentTotalSize
+                    self.statisticsInfo.currentFile = currentFileName
+                    self.statisticsInfo.progress = progress
+                }
+            } catch {
+                print("❌ 获取文件大小失败: \(error.localizedDescription)")
+            }
+            return
+        }
+        
+        // 是目录，检查是否应该跳过
+        if shouldSkipDirectory(url) {
+            return
+        }
+        
+        // 是目录，递归扫描
+        do {
+            // 更新当前处理的目录
+            DispatchQueue.main.async {
+                self.statisticsInfo.currentFile = url.lastPathComponent
+            }
+            
+            let options: FileManager.DirectoryEnumerationOptions = showHiddenFiles ? [] : [.skipsHiddenFiles]
+            let contents = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey], options: options)
+            
+            for item in contents {
+                if isCancelled {
+                    return
+                }
+                
+                scanDirectory(
+                    at: item,
+                    totalFilesToScan: totalFilesToScan,
+                    scannedFiles: &scannedFiles,
+                    totalSize: &totalSize,
+                    isCancelled: &isCancelled,
+                    showHiddenFiles: showHiddenFiles
+                )
+            }
+        } catch {
+            print("❌ 扫描目录失败: \(error.localizedDescription)")
+        }
     }
     
     // 处理全部选中功能（Command-A快捷键）

@@ -38,9 +38,10 @@ project.xcworkspace
 ehthumbs.db
 Thumbs.db
 
-# Documentation
-*.md
-*.txt
+# Documentation (exclude specific docs, but allow README)
+# *.md
+# *.txt
+!README.md
 
 # Logs
 logs

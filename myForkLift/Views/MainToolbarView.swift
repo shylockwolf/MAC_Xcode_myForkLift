@@ -24,6 +24,7 @@ struct MainToolbarView: View {
     let onMove: () -> Void
     let onClearSelection: () -> Void
     let onNewFolder: () -> Void
+    let onStatistics: () -> Void
     let onRename: () -> Void
     let onSelectAll: () -> Void
     
@@ -130,6 +131,13 @@ struct MainToolbarView: View {
                     Image(systemName: "folder.badge.plus")
                 }
                 .help("建立新文件夹")
+                
+                Button(action: {
+                    onStatistics()
+                }) {
+                    Image(systemName: "chart.bar.doc.horizontal")
+                }
+                .help("统计选中目录")
                 
                 Button(action: {
                     onRename()
