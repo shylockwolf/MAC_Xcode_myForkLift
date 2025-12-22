@@ -12,7 +12,7 @@ import Combine
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject var viewModel = ContentViewModel()
+    @EnvironmentObject var viewModel: ContentViewModel
     
     @State var leftPaneURL: URL
     @State var rightPaneURL: URL
@@ -76,6 +76,7 @@ struct ContentView: View {
     
     @State var window: NSWindow? // 窗口引用用于保存位置和大小
     
+
     // 保存收藏夹到UserDefaults
     private func saveFavorites() {
         do {
@@ -321,12 +322,21 @@ struct ContentView: View {
                 setupAppearance()
                 // 初始化历史记录
                 viewModel.initializeHistory(leftURL: leftPaneURL, rightURL: rightPaneURL)
+                // 加载打开的文件列表
+                viewModel.loadOpenedFiles()
                 // 设置定时刷新
                 setupTimer()
             }
             .onDisappear {
                 // 取消定时器
                 cancelTimer()
+                // 保存打开的文件列表
+                viewModel.saveOpenedFiles()
+            }
+            // 监听openedFiles变化，自动保存
+            .onReceive(viewModel.$openedFiles) {
+                _ in
+                viewModel.saveOpenedFiles()
             }
             .withProgressWindow(
                 isPresented: $isProgressWindowPresented,
@@ -533,6 +543,7 @@ struct ContentView: View {
             rightPaneURL: $rightPaneURL,
             externalDevices: $externalDevices,
             favorites: $favorites,
+            openedFiles: $viewModel.openedFiles,
             onEjectDevice: { device in
                 ejectDevice(device: device)
             },

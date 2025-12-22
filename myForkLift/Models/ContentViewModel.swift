@@ -24,6 +24,9 @@ final class ContentViewModel: ObservableObject {
     /// 用于触发文件列表刷新的标记
     @Published var refreshTrigger: UUID = UUID()
     
+    /// 从菜单打开的文件列表
+    @Published var openedFiles: [URL] = []
+    
     // MARK: - 目录历史记录管理
     
     /// 历史记录最大长度
@@ -51,6 +54,7 @@ final class ContentViewModel: ObservableObject {
     let rightShowFileTypeKey = "DWBrowserRightShowFileType"
     let rightShowFileSizeKey = "DWBrowserRightShowFileSize"
     let rightShowFileDateKey = "DWBrowserRightShowFileDate"
+    let openedFilesKey = "DWBrowserOpenedFiles"
     
     // MARK: - 窗口路径与状态持久化
     
@@ -181,6 +185,32 @@ final class ContentViewModel: ObservableObject {
         UserDefaults.standard.set(rightShowFileType, forKey: rightShowFileTypeKey)
         
         print("💾 已保存文件信息显示选项")
+    }
+    
+    /// 保存打开的文件列表
+    func saveOpenedFiles() {
+        let filePaths = openedFiles.map { $0.path }
+        UserDefaults.standard.set(filePaths, forKey: openedFilesKey)
+        print("💾 已保存打开的文件列表: \(filePaths)")
+    }
+    
+    /// 加载打开的文件列表
+    func loadOpenedFiles() {
+        if let savedPaths = UserDefaults.standard.array(forKey: openedFilesKey) as? [String] {
+            openedFiles = savedPaths.compactMap { path in
+                let url = URL(fileURLWithPath: path)
+                // 只加载存在的文件
+                if FileManager.default.fileExists(atPath: path) {
+                    return url
+                } else {
+                    print("⚠️ 文件不存在，跳过加载: \(path)")
+                    return nil
+                }
+            }
+            print("🔍 已加载打开的文件列表: \(openedFiles)")
+        } else {
+            print("📂 没有找到保存的打开文件列表")
+        }
     }
     
     /// 从 UserDefaults 加载文件信息显示选项

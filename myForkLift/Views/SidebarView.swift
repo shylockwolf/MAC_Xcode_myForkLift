@@ -42,12 +42,18 @@ struct SidebarView: View {
     @Binding var rightPaneURL: URL
     @Binding var externalDevices: [ExternalDevice]
     @Binding var favorites: [FavoriteItem]
+    @Binding var openedFiles: [URL]
     
     let onEjectDevice: (ExternalDevice) -> Void
     let onEjectAllDevices: () -> Void
     let onFavoriteRemoved: (FavoriteItem) -> Void
     let onFavoriteReorder: (_ providers: [NSItemProvider], _ targetFavorite: FavoriteItem) -> Bool
     let onDropToFavorites: (_ providers: [NSItemProvider]) -> Bool
+    
+    // 获取文件的实际系统图标
+    private func getFileIcon(for url: URL) -> NSImage {
+        return NSWorkspace.shared.icon(forFile: url.path)
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -216,6 +222,35 @@ struct SidebarView: View {
                     .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                         onDropToFavorites(providers)
                     }
+                
+                // 从菜单打开的文件列表区域
+                if !openedFiles.isEmpty {
+                    Text("Opened Files").font(.caption).foregroundColor(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                    
+                    ForEach(openedFiles, id: \.self) {
+                        url in
+                        HStack {
+                            Image(nsImage: getFileIcon(for: url))
+                                .resizable()
+                                .frame(width: 16, height: 16)
+                                .foregroundColor(.primary)
+                            Text(url.lastPathComponent)
+                                .lineLimit(1)
+                                .font(.system(size: 12))
+                            Spacer()
+                        }
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 12)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // 直接打开文件
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .padding(.bottom, 8)
+                }
             }
             
             Spacer()
