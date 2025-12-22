@@ -207,16 +207,22 @@ struct FileBrowserPane: View {
         
         if isDoubleClick {
             // 双击处理
-            print("🖱️ 双击")
+            print("🖱️ 双击文件: \(item.lastPathComponent)")
             if isDirectory(item) {
+                print("📂 双击目录，进入目录")
                 currentURL = item
+                // 进入目录时清空选择
+                let previousCount = selectedItems.count
                 selectedItems.removeAll()
                 lastShiftClickItem = nil
+                print("📂 进入目录，清空了 \(previousCount) 个选择")
             } else {
-                // 1. 选中这个文件
-                // 2. 把其它选中的文件都取消
+                print("📄 双击文件，打开文件")
+                // 双击文件时清空其他选择，只选中当前文件
+                let previousCount = selectedItems.count
                 selectedItems.removeAll()
                 selectedItems.insert(item)
+                print("📄 双击文件，清空了 \(previousCount) 个选择，选中当前文件: \(item.lastPathComponent)")
                 // 3. 打开这个文件
                 NSWorkspace.shared.open(item)
             }
@@ -227,11 +233,14 @@ struct FileBrowserPane: View {
             lastShiftClickItem = item
         } else {
             // 普通点击：切换单个选择
-            print("👆 普通点击")
+            print("👆 普通点击: \(item.lastPathComponent)")
+            let previousCount = selectedItems.count
             if selectedItems.contains(item) {
                 selectedItems.remove(item)
+                print("👆 取消选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
             } else {
                 selectedItems.insert(item)
+                print("👆 添加选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
             }
             lastShiftClickItem = item
         }
@@ -244,15 +253,31 @@ struct FileBrowserPane: View {
     private func performRangeSelection(fromItem: URL?, toItem: URL) {
         guard let fromItem = fromItem else {
             // 如果没有起始点，直接选择当前项
+            print("🎯 范围选择：没有起始点，选择单个项目")
+            selectedItems.removeAll()
             selectedItems.insert(toItem)
             return
         }
+        
+        print("🎯 开始范围选择: \(fromItem.lastPathComponent) -> \(toItem.lastPathComponent)")
+        print("🎯 当前items数组长度: \(items.count)")
         
         // 找到两个项目在列表中的索引
         guard let fromIndex = items.firstIndex(of: fromItem),
               let toIndex = items.firstIndex(of: toItem) else {
             print("❌ 无法找到项目的索引")
-            selectedItems.insert(toItem) // 回退到单个选择
+            print("❌ fromIndex: \(items.firstIndex(of: fromItem) ?? -1), toIndex: \(items.firstIndex(of: toItem) ?? -1)")
+            // 回退到单个选择
+            selectedItems.removeAll()
+            selectedItems.insert(toItem)
+            return
+        }
+        
+        // 边界检查
+        guard fromIndex >= 0 && fromIndex < items.count && toIndex >= 0 && toIndex < items.count else {
+            print("❌ 索引超出边界: fromIndex=\(fromIndex), toIndex=\(toIndex), items.count=\(items.count)")
+            selectedItems.removeAll()
+            selectedItems.insert(toItem)
             return
         }
         
@@ -265,12 +290,20 @@ struct FileBrowserPane: View {
         let startIndex = min(fromIndex, toIndex)
         let endIndex = max(fromIndex, toIndex)
         
+        print("🎯 选择范围: \(startIndex) -> \(endIndex)")
+        
         // 选择范围内的所有项目
+        var selectedCount = 0
         for index in startIndex...endIndex {
-            selectedItems.insert(items[index])
+            if index < items.count {
+                selectedItems.insert(items[index])
+                selectedCount += 1
+            } else {
+                print("⚠️ 跳过超出边界的索引: \(index)")
+            }
         }
         
-        NSLog("✅ 范围选择完成，选中了 \(selectedItems.count) 个项目")
+        print("✅ 范围选择完成，选中了 \(selectedItems.count) 个项目（预期 \(selectedCount) 个）")
     }
     
     private func loadItems() {
@@ -668,10 +701,13 @@ struct FileBrowserPane: View {
                                     onActivate()
                                 }
                                 
+                                let previousCount = selectedItems.count
                                 if selectedItems.contains(item) {
                                     selectedItems.remove(item)
+                                    print("☑️ 复选框取消选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
                                 } else {
                                     selectedItems.insert(item)
+                                    print("☑️ 复选框添加选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
                                 }
                             }) {
                                 Image(systemName: selectedItems.contains(item) ? "checkmark.square.fill" : "square")

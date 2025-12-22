@@ -45,8 +45,14 @@ struct ContentView: View {
     // 复制进度相关
     @State var copyProgress: CopyProgress?
     @State var showCopyProgress = false
+    @State var isCopyOperationCancelled: Bool = false
     @State var isRefreshing = false
     @State var refreshingText = "刷新中…"
+    @State var maxProgress: Double = 0.0 // 用于确保进度条只前进不后退
+    
+    // 定时刷新相关
+    @State var timerCancellable: Cancellable? = nil
+    @State var shouldRefreshTimerRun: Bool = false
     
     // 外部设备列表
     @State var externalDevices: [ExternalDevice] = []
@@ -304,6 +310,12 @@ struct ContentView: View {
                 setupAppearance()
                 // 初始化历史记录
                 viewModel.initializeHistory(leftURL: leftPaneURL, rightURL: rightPaneURL)
+                // 设置定时刷新
+                setupTimer()
+            }
+            .onDisappear {
+                // 取消定时器
+                cancelTimer()
             }
             .withProgressWindow(
                 isPresented: $isProgressWindowPresented,
@@ -322,6 +334,27 @@ struct ContentView: View {
                 refreshingOverlay,
                 alignment: .center
             )
+    }
+    
+    // 定时刷新相关方法
+    private func setupTimer() {
+        // 如果已经有定时器，先取消
+        timerCancellable?.cancel()
+        
+        // 设置2秒定时器
+        timerCancellable = Timer.publish(every: 2.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { _ in
+                // 只有在无任务时才刷新
+                if !self.showCopyProgress && !self.isRefreshing {
+                    self.viewModel.triggerRefresh()
+                }
+            }
+    }
+    
+    private func cancelTimer() {
+        timerCancellable?.cancel()
+        timerCancellable = nil
     }
     
     // 主内容视图
@@ -359,6 +392,13 @@ struct ContentView: View {
         .onChange(of: rightShowFileSize) { _ in saveFileDisplayOptions() }
         .onChange(of: rightShowFileDate) { _ in saveFileDisplayOptions() }
         .onChange(of: rightShowFileType) { _ in saveFileDisplayOptions() }
+        // 监听任务状态变化，动态调整定时器
+        .onChange(of: showCopyProgress) { _ in
+            // 任务状态变化时不需要重新设置定时器，定时器内部会判断是否需要刷新
+        }
+        .onChange(of: isRefreshing) { _ in
+            // 任务状态变化时不需要重新设置定时器，定时器内部会判断是否需要刷新
+        }
     }
     
     // 工具栏视图
@@ -562,8 +602,11 @@ struct ContentView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        CopyProgressView(progress: progress)
-                            .transition(.opacity.combined(with: .scale))
+                        CopyProgressView(progress: progress) {
+                            // 取消回调
+                            self.cancelCopyOperation()
+                        }
+                        .transition(.opacity.combined(with: .scale))
                         Spacer()
                     }
                     .padding(.bottom, 50)

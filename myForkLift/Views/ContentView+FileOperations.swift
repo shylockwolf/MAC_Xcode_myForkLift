@@ -134,8 +134,30 @@ extension ContentView {
         }
     }
     
+    // 取消复制操作
+    func cancelCopyOperation() {
+        print("❌ 用户取消了复制操作")
+        isCopyOperationCancelled = true
+        showCopyProgress = false
+        copyProgress = nil
+        
+        // 清空选择
+        viewModel.clearAllSelections()
+        
+        // 刷新文件面板
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.viewModel.triggerRefresh()
+        }
+    }
+    
     // 复制选中文件到另一个窗口激活的目录（支持多选，带进度显示）
     func copyToAnotherPane() {
+        // 重置所有与复制操作相关的状态，确保新操作能正常开始
+        isCopyOperationCancelled = false
+        showCopyProgress = false
+        copyProgress = nil
+        maxProgress = 0.0 // 重置最大进度值，确保新操作从0开始
+        
         let sourceItems = Array(viewModel.getCurrentSelectedItems())
         
         guard !sourceItems.isEmpty else {
@@ -258,13 +280,15 @@ extension ContentView {
                 DispatchQueue.main.async {
                     self.copyProgress = CopyProgress(
                         fileName: sourceURL.lastPathComponent,
-                        progress: 0.0,
+                        progress: 0.01,
                         bytesPerSecond: 0,
                         estimatedTimeRemaining: 0,
                         isCompleted: false,
                         operation: "copy",
                         currentFileIndex: index + 1,
-                        totalFiles: sourceItems.count
+                        totalFiles: sourceItems.count,
+                        isDirectoryOperation: false,
+                        currentFileName: nil
                     )
                     self.showCopyProgress = true
                 }
@@ -281,42 +305,34 @@ extension ContentView {
                     
                     if isDirectory.boolValue {
                         // 本地目录之间复制
-                        // 复制本地目录（使用系统方法，显示简单进度）
+                        // 使用带进度的目录复制方法，显示具体文件名
+                        var lastProgressUpdate = Date()
+                        var lastSpeedTime = Date()
+                        var lastSpeedBytes: Int64 = 0
+                        var currentSpeed: Double = 0.0
+                        var speedSamples: [Double] = [] // 存储最近的速度样本，用于计算平均速度
+                        let maxSpeedSamples = 10 // 最多保留10个样本
+                        
                         DispatchQueue.main.async {
                             self.copyProgress = CopyProgress(
                                 fileName: sourceURL.lastPathComponent,
-                                progress: 0.0,
+                                progress: 0.01,
                                 bytesPerSecond: 0,
                                 estimatedTimeRemaining: 0,
                                 isCompleted: false,
                                 operation: "copy",
                                 currentFileIndex: index + 1,
-                                totalFiles: sourceItems.count
+                                totalFiles: sourceItems.count,
+                                isDirectoryOperation: true,
+                                currentFileName: "准备中..."
                             )
                         }
                         
-                        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-                        
-                        DispatchQueue.main.async {
-                            self.copyProgress = CopyProgress(
-                                fileName: sourceURL.lastPathComponent,
-                                progress: 1.0,
-                                bytesPerSecond: 0,
-                                estimatedTimeRemaining: 0,
-                                isCompleted: true,
-                                operation: "copy",
-                                currentFileIndex: index + 1,
-                                totalFiles: sourceItems.count
-                            )
-                        }
-                    } else {
-                        // 本地文件之间复制
-                        // 复制文件（使用自定义进度方法）
-                        try FileOperationService.copyFileWithProgress(
+                        try FileOperationService.copyDirectoryWithProgress(
                             from: sourceURL,
                             to: destinationURL,
-                            bufferSize: 1024 * 1024, // 1MB buffer
-                            onProgress: { bytes in
+                            bufferSize: 1024 * 1024,
+                            onProgress: { bytes, currentFileName in
                                 let currentTime = Date()
                                 let totalProgress = totalBytes > 0 ? Double(completedBytes + bytes) / Double(totalBytes) : 1.0
                                 
@@ -325,10 +341,20 @@ extension ContentView {
                                 var bytesPerSecond: Double = 0.0
                                 
                                 if speedTimeElapsed > 0.1 {
-                                    bytesPerSecond = Double(speedBytesTransferred) / speedTimeElapsed
+                                    let currentSpeedSample = Double(speedBytesTransferred) / speedTimeElapsed
+                                    
+                                    // 添加到速度样本数组
+                                    speedSamples.append(currentSpeedSample)
+                                    if speedSamples.count > maxSpeedSamples {
+                                        speedSamples.removeFirst() // 移除最旧的样本
+                                    }
+                                    
+                                    // 计算平均速度
+                                    bytesPerSecond = speedSamples.reduce(0, +) / Double(speedSamples.count)
+                                    currentSpeed = bytesPerSecond
+                                    
                                     lastSpeedTime = currentTime
                                     lastSpeedBytes = Int64(bytes)
-                                    currentSpeed = bytesPerSecond
                                 } else if speedBytesTransferred > 0 {
                                     if currentSpeed > 0 {
                                         bytesPerSecond = currentSpeed
@@ -338,6 +364,81 @@ extension ContentView {
                                 } else if bytes > 0 {
                                     bytesPerSecond = 10 * 1024 * 1024
                                 }
+                                
+                                let timeSinceLastUpdate = currentTime.timeIntervalSince(lastProgressUpdate)
+                                let shouldUpdate = timeSinceLastUpdate >= 0.2 || currentFileName == "完成"
+                                
+                                if shouldUpdate {
+                                    // 确保进度条只前进不后退
+                                    let displayProgress = totalProgress > self.maxProgress ? totalProgress : self.maxProgress
+                                    if displayProgress > self.maxProgress {
+                                        self.maxProgress = displayProgress
+                                    }
+                                    
+                                    DispatchQueue.main.async {
+                                        self.copyProgress = CopyProgress(
+                                            fileName: sourceURL.lastPathComponent,
+                                            progress: displayProgress,
+                                            bytesPerSecond: bytesPerSecond,
+                                            estimatedTimeRemaining: bytesPerSecond > 0 ?
+                                                Double((fileSizes[sourceURL] ?? 0) - bytes) / bytesPerSecond : 0,
+                                            isCompleted: currentFileName == "完成",
+                                            operation: "copy",
+                                            currentFileIndex: index + 1,
+                                            totalFiles: sourceItems.count,
+                                            isDirectoryOperation: true,
+                                            currentFileName: currentFileName == "完成" ? sourceURL.lastPathComponent : currentFileName
+                                        )
+                                    }
+                                    lastProgressUpdate = currentTime
+                                }
+                            },
+                            shouldCancel: {
+                                return self.isCopyOperationCancelled
+                            }
+                        )
+                    } else {
+                        // 本地文件之间复制
+                    // 复制文件（使用自定义进度方法）
+                    var speedSamples: [Double] = [] // 存储最近的速度样本，用于计算平均速度
+                    let maxSpeedSamples = 10 // 最多保留10个样本
+                    
+                    try FileOperationService.copyFileWithProgress(
+                        from: sourceURL,
+                        to: destinationURL,
+                        bufferSize: 1024 * 1024, // 1MB buffer
+                        onProgress: { bytes in
+                            let currentTime = Date()
+                            let totalProgress = totalBytes > 0 ? Double(completedBytes + bytes) / Double(totalBytes) : 1.0
+                            
+                            let speedTimeElapsed = currentTime.timeIntervalSince(lastSpeedTime)
+                            let speedBytesTransferred = Int64(bytes) - lastSpeedBytes
+                            var bytesPerSecond: Double = 0.0
+                            
+                            if speedTimeElapsed > 0.1 {
+                                let currentSpeedSample = Double(speedBytesTransferred) / speedTimeElapsed
+                                
+                                // 添加到速度样本数组
+                                speedSamples.append(currentSpeedSample)
+                                if speedSamples.count > maxSpeedSamples {
+                                    speedSamples.removeFirst() // 移除最旧的样本
+                                }
+                                
+                                // 计算平均速度
+                                bytesPerSecond = speedSamples.reduce(0, +) / Double(speedSamples.count)
+                                currentSpeed = bytesPerSecond
+                                
+                                lastSpeedTime = currentTime
+                                lastSpeedBytes = Int64(bytes)
+                            } else if speedBytesTransferred > 0 {
+                                if currentSpeed > 0 {
+                                    bytesPerSecond = currentSpeed
+                                } else {
+                                    bytesPerSecond = 10 * 1024 * 1024
+                                }
+                            } else if bytes > 0 {
+                                bytesPerSecond = 10 * 1024 * 1024
+                            }
                                 
                                 let currentFileRemaining = fileSize - bytes
                                 var totalRemainingBytes: Int64 = currentFileRemaining
@@ -353,20 +454,31 @@ extension ContentView {
                                 let shouldUpdate = timeSinceLastUpdate >= 0.2 || bytes == fileSize
                                 
                                 if shouldUpdate {
+                                    // 确保进度条只前进不后退
+                                    let displayProgress = totalProgress > self.maxProgress ? totalProgress : self.maxProgress
+                                    if displayProgress > self.maxProgress {
+                                        self.maxProgress = displayProgress
+                                    }
+                                    
                                     DispatchQueue.main.async {
                                         self.copyProgress = CopyProgress(
                                             fileName: sourceURL.lastPathComponent,
-                                            progress: totalProgress,
+                                            progress: displayProgress,
                                             bytesPerSecond: bytesPerSecond,
                                             estimatedTimeRemaining: estimatedTimeRemaining,
                                             isCompleted: false,
                                             operation: "copy",
                                             currentFileIndex: index + 1,
-                                            totalFiles: sourceItems.count
+                                            totalFiles: sourceItems.count,
+                                            isDirectoryOperation: false,
+                                            currentFileName: nil
                                         )
                                     }
                                     lastProgressUpdate = currentTime
                                 }
+                            },
+                            shouldCancel: {
+                                return self.isCopyOperationCancelled
                             }
                         )
                     }
@@ -375,15 +487,25 @@ extension ContentView {
                     completedBytes += currentTotalCompleted
                     
                     DispatchQueue.main.async {
+                        // 使用实际已完成字节数计算进度
+                        let finalProgress = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 1.0
+                        // 确保进度条只前进不后退
+                        let displayProgress = finalProgress > self.maxProgress ? finalProgress : self.maxProgress
+                        if displayProgress > self.maxProgress {
+                            self.maxProgress = displayProgress
+                        }
+                        
                         self.copyProgress = CopyProgress(
                             fileName: sourceURL.lastPathComponent,
-                            progress: 1.0,
+                            progress: displayProgress,
                             bytesPerSecond: 0,
                             estimatedTimeRemaining: 0,
                             isCompleted: true,
                             operation: "copy",
                             currentFileIndex: index + 1,
-                            totalFiles: sourceItems.count
+                            totalFiles: sourceItems.count,
+                            isDirectoryOperation: false,
+                            currentFileName: nil
                         )
                         
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -397,11 +519,20 @@ extension ContentView {
                     successCount += 1
                     
                 } catch {
-                    let errorMessage = "\(sourceURL.lastPathComponent): \(error.localizedDescription)"
-                    DispatchQueue.main.async {
-                        errorMessages.append(errorMessage)
+                    // 检查是否为取消操作，如果是则不显示错误消息
+                    let nsError = error as NSError
+                    if nsError.code == -999 && nsError.domain == "DWBrowser" {
+                        print("🚫 用户取消了复制操作: \(sourceURL.lastPathComponent)")
+                        // 不添加到错误消息列表
+                        // 取消所有文件的复制，跳出循环
+                        break
+                    } else {
+                        let errorMessage = "\(sourceURL.lastPathComponent): \(error.localizedDescription)"
+                        DispatchQueue.main.async {
+                            errorMessages.append(errorMessage)
+                        }
+                        print("❌ 复制失败: \(errorMessage)")
                     }
-                    print("❌ 复制失败: \(errorMessage)")
                 }
             }
             
@@ -479,6 +610,12 @@ extension ContentView {
     
     // 移动选中文件到另一个窗口激活的目录（支持多选）
     func moveItem() {
+        // 重置所有与移动操作相关的状态，确保新操作能正常开始
+        isCopyOperationCancelled = false
+        showCopyProgress = false
+        copyProgress = nil
+        maxProgress = 0.0 // 重置最大进度值，确保新操作从0开始
+        
         let sourceItems = Array(viewModel.getCurrentSelectedItems())
         
         guard !sourceItems.isEmpty else {
@@ -548,8 +685,19 @@ extension ContentView {
             FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory)
             
             if isDirectory.boolValue {
-                fileSizes[sourceURL] = 1024 * 1024
-                totalBytes += 1024 * 1024
+                var dirTotal: Int64 = 0
+                if let enumerator = FileManager.default.enumerator(at: sourceURL, includingPropertiesForKeys: nil) {
+                    for case let u as URL in enumerator {
+                        var isDir2: ObjCBool = false
+                        FileManager.default.fileExists(atPath: u.path, isDirectory: &isDir2)
+                        if !isDir2.boolValue {
+                            let attrs = try? FileManager.default.attributesOfItem(atPath: u.path)
+                            dirTotal += (attrs?[.size] as? Int64) ?? 0
+                        }
+                    }
+                }
+                fileSizes[sourceURL] = dirTotal
+                totalBytes += dirTotal
             } else {
                 let size = getFileSize(sourceURL)
                 fileSizes[sourceURL] = size
@@ -599,13 +747,15 @@ extension ContentView {
                 DispatchQueue.main.async {
                     self.copyProgress = CopyProgress(
                         fileName: sourceURL.lastPathComponent,
-                        progress: 0.0,
+                        progress: 0.01,
                         bytesPerSecond: 0,
                         estimatedTimeRemaining: 0,
                         isCompleted: false,
                         operation: "move",
                         currentFileIndex: index + 1,
-                        totalFiles: sourceItems.count
+                        totalFiles: sourceItems.count,
+                        isDirectoryOperation: false,
+                        currentFileName: nil
                     )
                     self.showCopyProgress = true
                 }
@@ -623,104 +773,228 @@ extension ContentView {
                         DispatchQueue.main.async {
                             self.copyProgress = CopyProgress(
                                 fileName: sourceURL.lastPathComponent,
-                                progress: 0.0,
+                                progress: 0.01,
                                 bytesPerSecond: 0,
                                 estimatedTimeRemaining: 0,
                                 isCompleted: false,
                                 operation: "move",
                                 currentFileIndex: index + 1,
-                                totalFiles: sourceItems.count
+                                totalFiles: sourceItems.count,
+                                isDirectoryOperation: true,
+                                currentFileName: "准备中..."
                             )
                         }
                         
-                        // 本地目录移动
-                        try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+                        // 本地目录移动 - 使用复制+删除的方式以支持进度显示
+                        var speedSamples: [Double] = [] // 存储最近的速度样本，用于计算平均速度
+                        let maxSpeedSamples = 10 // 最多保留10个样本
+                        
+                        try FileOperationService.copyDirectoryWithProgress(
+                            from: sourceURL,
+                            to: destinationURL,
+                            bufferSize: 1024 * 1024,
+                            onProgress: { bytes, currentFileName in
+                                let currentTime = Date()
+                                let totalProgress = totalBytes > 0 ? Double(completedBytes + bytes) / Double(totalBytes) : 1.0
+                                
+                                let speedTimeElapsed = currentTime.timeIntervalSince(lastSpeedTime)
+                                let speedBytesTransferred = Int64(bytes) - lastSpeedBytes
+                                var bytesPerSecond: Double = 0.0
+                                
+                                if speedTimeElapsed > 0.1 {
+                                    let currentSpeedSample = Double(speedBytesTransferred) / speedTimeElapsed
+                                    
+                                    // 添加到速度样本数组
+                                    speedSamples.append(currentSpeedSample)
+                                    if speedSamples.count > maxSpeedSamples {
+                                        speedSamples.removeFirst() // 移除最旧的样本
+                                    }
+                                    
+                                    // 计算平均速度
+                                    bytesPerSecond = speedSamples.reduce(0, +) / Double(speedSamples.count)
+                                    currentSpeed = bytesPerSecond
+                                    
+                                    lastSpeedTime = currentTime
+                                    lastSpeedBytes = Int64(bytes)
+                                } else if speedBytesTransferred > 0 {
+                                    if currentSpeed > 0 {
+                                        bytesPerSecond = currentSpeed
+                                    } else {
+                                        bytesPerSecond = 10 * 1024 * 1024
+                                    }
+                                } else if bytes > 0 {
+                                    bytesPerSecond = 10 * 1024 * 1024
+                                }
+                                
+                                let timeSinceLastUpdate = currentTime.timeIntervalSince(lastProgressUpdate)
+                                let shouldUpdate = timeSinceLastUpdate >= 0.2 || currentFileName == "完成"
+                                
+                                if shouldUpdate {
+                                    // 确保进度条只前进不后退
+                                    let displayProgress = totalProgress > self.maxProgress ? totalProgress : self.maxProgress
+                                    if displayProgress > self.maxProgress {
+                                        self.maxProgress = displayProgress
+                                    }
+                                    
+                                    DispatchQueue.main.async {
+                                        self.copyProgress = CopyProgress(
+                                            fileName: sourceURL.lastPathComponent,
+                                            progress: displayProgress,
+                                            bytesPerSecond: bytesPerSecond,
+                                            estimatedTimeRemaining: bytesPerSecond > 0 ?
+                                                Double((fileSizes[sourceURL] ?? 0) - bytes) / bytesPerSecond : 0,
+                                            isCompleted: currentFileName == "完成",
+                                            operation: "move",
+                                            currentFileIndex: index + 1,
+                                            totalFiles: sourceItems.count,
+                                            isDirectoryOperation: true,
+                                            currentFileName: currentFileName == "完成" ? sourceURL.lastPathComponent : currentFileName
+                                        )
+                                    }
+                                    lastProgressUpdate = currentTime
+                                }
+                            },
+                            shouldCancel: {
+                                return self.isCopyOperationCancelled
+                            }
+                        )
+                        
+                        // 移动完成后删除源目录
+                        if !isCopyOperationCancelled {
+                            try FileManager.default.removeItem(at: sourceURL)
+                        }
                         
                         DispatchQueue.main.async {
+                            // 使用实际已完成字节数计算进度
+                            let finalProgress = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 1.0
+                            // 确保进度条只前进不后退
+                            let displayProgress = finalProgress > self.maxProgress ? finalProgress : self.maxProgress
+                            if displayProgress > self.maxProgress {
+                                self.maxProgress = displayProgress
+                            }
+                            
                             self.copyProgress = CopyProgress(
                                 fileName: sourceURL.lastPathComponent,
-                                progress: 1.0,
+                                progress: displayProgress,
                                 bytesPerSecond: 0,
                                 estimatedTimeRemaining: 0,
                                 isCompleted: true,
                                 operation: "move",
                                 currentFileIndex: index + 1,
-                                totalFiles: sourceItems.count
+                                totalFiles: sourceItems.count,
+                                isDirectoryOperation: true,
+                                currentFileName: sourceURL.lastPathComponent
                             )
                         }
                     } else {
                         // 本地文件移动
+                        var speedSamples: [Double] = [] // 存储最近的速度样本，用于计算平均速度
+                        let maxSpeedSamples = 10 // 最多保留10个样本
+                        
                         try FileOperationService.moveFileWithProgress(
                             from: sourceURL,
                             to: destinationURL,
                             bufferSize: 1024 * 1024,
                             onProgress: { bytes in
-                            let currentTime = Date()
-                            let totalProgress = totalBytes > 0 ? Double(completedBytes + bytes) / Double(totalBytes) : 1.0
-                            
-                            let speedTimeElapsed = currentTime.timeIntervalSince(lastSpeedTime)
-                            let speedBytesTransferred = Int64(bytes) - lastSpeedBytes
-                            var bytesPerSecond: Double = 0.0
-                            
-                            if speedTimeElapsed > 0.1 {
-                                bytesPerSecond = Double(speedBytesTransferred) / speedTimeElapsed
-                                lastSpeedTime = currentTime
-                                lastSpeedBytes = Int64(bytes)
-                                currentSpeed = bytesPerSecond
-                            } else if speedBytesTransferred > 0 {
-                                if currentSpeed > 0 {
-                                    bytesPerSecond = currentSpeed
-                                } else {
+                                let currentTime = Date()
+                                let totalProgress = totalBytes > 0 ? Double(completedBytes + bytes) / Double(totalBytes) : 1.0
+                                
+                                let speedTimeElapsed = currentTime.timeIntervalSince(lastSpeedTime)
+                                let speedBytesTransferred = Int64(bytes) - lastSpeedBytes
+                                var bytesPerSecond: Double = 0.0
+                                
+                                if speedTimeElapsed > 0.1 {
+                                    let currentSpeedSample = Double(speedBytesTransferred) / speedTimeElapsed
+                                    
+                                    // 添加到速度样本数组
+                                    speedSamples.append(currentSpeedSample)
+                                    if speedSamples.count > maxSpeedSamples {
+                                        speedSamples.removeFirst() // 移除最旧的样本
+                                    }
+                                    
+                                    // 计算平均速度
+                                    bytesPerSecond = speedSamples.reduce(0, +) / Double(speedSamples.count)
+                                    currentSpeed = bytesPerSecond
+                                    
+                                    lastSpeedTime = currentTime
+                                    lastSpeedBytes = Int64(bytes)
+                                } else if speedBytesTransferred > 0 {
+                                    if currentSpeed > 0 {
+                                        bytesPerSecond = currentSpeed
+                                    } else {
+                                        bytesPerSecond = 10 * 1024 * 1024
+                                    }
+                                } else if bytes > 0 {
                                     bytesPerSecond = 10 * 1024 * 1024
                                 }
-                            } else if bytes > 0 {
-                                bytesPerSecond = 10 * 1024 * 1024
-                            }
-                            
-                            let currentFileRemaining = fileSize - bytes
-                            var totalRemainingBytes: Int64 = currentFileRemaining
-                            
-                            for i in (index + 1)..<sourceItems.count {
-                                totalRemainingBytes += fileSizes[sourceItems[i]] ?? 0
-                            }
-                            
-                            let estimatedTimeRemaining = bytesPerSecond > 0 ?
-                                Double(totalRemainingBytes) / bytesPerSecond : 0
-                            
-                            let timeSinceLastUpdate = currentTime.timeIntervalSince(lastProgressUpdate)
-                            let shouldUpdate = timeSinceLastUpdate >= 0.2 || bytes == fileSize
-                            
-                            if shouldUpdate {
-                                DispatchQueue.main.async {
-                                    self.copyProgress = CopyProgress(
-                                        fileName: sourceURL.lastPathComponent,
-                                        progress: totalProgress,
-                                        bytesPerSecond: bytesPerSecond,
-                                        estimatedTimeRemaining: estimatedTimeRemaining,
-                                        isCompleted: false,
-                                        operation: "move",
-                                        currentFileIndex: index + 1,
-                                        totalFiles: sourceItems.count
-                                    )
+                                
+                                let currentFileRemaining = fileSize - bytes
+                                var totalRemainingBytes: Int64 = currentFileRemaining
+                                
+                                for i in (index + 1)..<sourceItems.count {
+                                    totalRemainingBytes += fileSizes[sourceItems[i]] ?? 0
                                 }
-                                lastProgressUpdate = currentTime
+                                
+                                let estimatedTimeRemaining = bytesPerSecond > 0 ?
+                                    Double(totalRemainingBytes) / bytesPerSecond : 0
+                                
+                                let timeSinceLastUpdate = currentTime.timeIntervalSince(lastProgressUpdate)
+                                let shouldUpdate = timeSinceLastUpdate >= 0.2 || bytes == fileSize
+                                
+                                if shouldUpdate {
+                                    // 确保进度条只前进不后退
+                                    let displayProgress = totalProgress > self.maxProgress ? totalProgress : self.maxProgress
+                                    if displayProgress > self.maxProgress {
+                                        self.maxProgress = displayProgress
+                                    }
+                                    
+                                    DispatchQueue.main.async {
+                                        self.copyProgress = CopyProgress(
+                                            fileName: sourceURL.lastPathComponent,
+                                            progress: displayProgress,
+                                            bytesPerSecond: bytesPerSecond,
+                                            estimatedTimeRemaining: estimatedTimeRemaining,
+                                            isCompleted: false,
+                                            operation: "move",
+                                            currentFileIndex: index + 1,
+                                            totalFiles: sourceItems.count,
+                                            isDirectoryOperation: false,
+                                            currentFileName: nil
+                                        )
+                                    }
+                                    lastProgressUpdate = currentTime
+                                }
+                            },
+                            shouldCancel: {
+                                return self.isCopyOperationCancelled
                             }
-                        }
-                    )
+                        )
                     }
                     
-                    completedBytes += fileSize
+                    // 使用正确的文件大小更新已完成字节数
+                    let currentTotalCompleted = fileSizes[sourceURL] ?? fileSize
+                    completedBytes += currentTotalCompleted
                     
                     DispatchQueue.main.async {
+                        // 使用实际已完成字节数计算进度
+                        let finalProgress = totalBytes > 0 ? Double(completedBytes) / Double(totalBytes) : 1.0
+                        // 确保进度条只前进不后退
+                        let displayProgress = finalProgress > self.maxProgress ? finalProgress : self.maxProgress
+                        if displayProgress > self.maxProgress {
+                            self.maxProgress = displayProgress
+                        }
+                        
                         self.copyProgress = CopyProgress(
                             fileName: sourceURL.lastPathComponent,
-                            progress: 1.0,
+                            progress: displayProgress,
                             bytesPerSecond: 0,
                             estimatedTimeRemaining: 0,
                             isCompleted: true,
                             operation: "move",
                             currentFileIndex: index + 1,
-                            totalFiles: sourceItems.count
+                            totalFiles: sourceItems.count,
+                            isDirectoryOperation: false,
+                            currentFileName: nil
                         )
                         
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -733,13 +1007,22 @@ extension ContentView {
                     print("✅ 成功移动: \(sourceURL.lastPathComponent) 到 \(targetPaneURL.path)")
                     successCount += 1
                 } catch {
-                    let errorMessage = "\(sourceURL.lastPathComponent): \(error.localizedDescription)"
-                    print("🔧🔧🔧 移动失败详细错误: \(error)")
-                    print("🔧🔧🔧 错误描述: \(errorMessage)")
-                    DispatchQueue.main.async {
-                        errorMessages.append(errorMessage)
+                    // 检查是否为取消操作，如果是则不显示错误消息
+                    let nsError = error as NSError
+                    if nsError.code == -999 && nsError.domain == "DWBrowser" {
+                        print("🚫 用户取消了移动操作: \(sourceURL.lastPathComponent)")
+                        // 不添加到错误消息列表
+                        // 取消所有文件的移动，跳出循环
+                        break
+                    } else {
+                        let errorMessage = "\(sourceURL.lastPathComponent): \(error.localizedDescription)"
+                        print("🔧🔧🔧 移动失败详细错误: \(error)")
+                        print("🔧🔧🔧 错误描述: \(errorMessage)")
+                        DispatchQueue.main.async {
+                            errorMessages.append(errorMessage)
+                        }
+                        print("❌ 移动失败: \(errorMessage)")
                     }
-                    print("❌ 移动失败: \(errorMessage)")
                 }
             }
             

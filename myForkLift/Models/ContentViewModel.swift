@@ -207,12 +207,17 @@ final class ContentViewModel: ObservableObject {
     
     /// 获取当前激活面板的所有选中项
     func getCurrentSelectedItems() -> Set<URL> {
+        let result: Set<URL>
         switch activePane {
         case .left:
-            return leftSelectedItems
+            result = leftSelectedItems
+            print("🔍 getCurrentSelectedItems: 左面板激活，选中 \(leftSelectedItems.count) 项")
         case .right:
-            return rightSelectedItems
+            result = rightSelectedItems
+            print("🔍 getCurrentSelectedItems: 右面板激活，选中 \(rightSelectedItems.count) 项")
         }
+        print("🔍 总选择状态 - 左: \(leftSelectedItems.count) 项, 右: \(rightSelectedItems.count) 项")
+        return result
     }
     
     /// 获取当前激活面板的任意一个选中项（兼容旧代码）
@@ -228,13 +233,26 @@ final class ContentViewModel: ObservableObject {
     
     /// 设置当前激活面板，并自动清空另一个面板的选中状态
     func setActivePane(_ pane: Pane) {
+        print("🔄 切换面板: \(activePane) -> \(pane)")
+        print("🔄 切换前选择状态 - 左: \(leftSelectedItems.count) 项, 右: \(rightSelectedItems.count) 项")
+        
         activePane = pane
+        
+        // 清空非激活面板的选择状态，但保留当前激活面板的选择
         switch pane {
         case .left:
-            rightSelectedItems.removeAll()
+            if !rightSelectedItems.isEmpty {
+                rightSelectedItems.removeAll()
+                print("🔄 已清空右面板选择")
+            }
         case .right:
-            leftSelectedItems.removeAll()
+            if !leftSelectedItems.isEmpty {
+                leftSelectedItems.removeAll()
+                print("🔄 已清空左面板选择")
+            }
         }
+        
+        print("🔄 切换后选择状态 - 左: \(leftSelectedItems.count) 项, 右: \(rightSelectedItems.count) 项")
     }
     
     /// 触发文件列表刷新
