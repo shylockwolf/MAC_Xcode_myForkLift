@@ -135,7 +135,7 @@ struct MainToolbarView: View {
                 Button(action: {
                     onStatistics()
                 }) {
-                    Image(systemName: "chart.bar.doc.horizontal")
+                    Image(systemName: "questionmark.folder")
                 }
                 .help("统计选中目录")
                 
