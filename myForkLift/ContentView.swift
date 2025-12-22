@@ -561,6 +561,11 @@ struct ContentView: View {
             },
             onDropToFavorites: { providers in
                 handleDrop(providers: providers)
+            },
+            onOpenedFileRemoved: { url in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    viewModel.openedFiles.removeAll { $0 == url }
+                }
             }
         )
     }

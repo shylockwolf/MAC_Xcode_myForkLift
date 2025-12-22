@@ -49,6 +49,7 @@ struct SidebarView: View {
     let onFavoriteRemoved: (FavoriteItem) -> Void
     let onFavoriteReorder: (_ providers: [NSItemProvider], _ targetFavorite: FavoriteItem) -> Bool
     let onDropToFavorites: (_ providers: [NSItemProvider]) -> Bool
+    let onOpenedFileRemoved: (URL) -> Void
     
     // 获取文件的实际系统图标
     private func getFileIcon(for url: URL) -> NSImage {
@@ -236,9 +237,6 @@ struct SidebarView: View {
                                 .resizable()
                                 .frame(width: 16, height: 16)
                                 .foregroundColor(.primary)
-                            Text(url.lastPathComponent)
-                                .lineLimit(1)
-                                .font(.system(size: 12))
                             Spacer()
                         }
                         .padding(.vertical, 2)
@@ -247,6 +245,14 @@ struct SidebarView: View {
                         .onTapGesture {
                             // 直接打开文件
                             NSWorkspace.shared.open(url)
+                        }
+                        .contextMenu {
+                            Button("删除") {
+                                onOpenedFileRemoved(url)
+                            }
+                            Button("放弃") {
+                                // 放弃操作，不执行任何动作
+                            }
                         }
                     }
                     .padding(.bottom, 8)
