@@ -230,31 +230,34 @@ struct SidebarView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 8)
                     
-                    ForEach(openedFiles, id: \.self) {
-                        url in
-                        HStack {
-                            Image(nsImage: getFileIcon(for: url))
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
-                        .padding(.vertical, 2)
-                        .padding(.horizontal, 12)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            // 直接打开文件
-                            NSWorkspace.shared.open(url)
-                        }
-                        .contextMenu {
-                            Button("删除") {
-                                onOpenedFileRemoved(url)
+                    // 使用网格布局实现横向排列，自动换行
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 30), spacing: 8)], spacing: 8) {
+                        ForEach(openedFiles, id: \.self) {
+                            url in
+                            HStack {
+                                Image(nsImage: getFileIcon(for: url))
+                                    .resizable()
+                                    .frame(width: 16, height: 16)
+                                    .foregroundColor(.primary)
                             }
-                            Button("放弃") {
-                                // 放弃操作，不执行任何动作
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, 2)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                // 直接打开文件
+                                NSWorkspace.shared.open(url)
+                            }
+                            .contextMenu {
+                                Button("删除") {
+                                    onOpenedFileRemoved(url)
+                                }
+                                Button("放弃") {
+                                    // 放弃操作，不执行任何动作
+                                }
                             }
                         }
                     }
+                    .padding(.horizontal, 12)
                     .padding(.bottom, 8)
                 }
             }
