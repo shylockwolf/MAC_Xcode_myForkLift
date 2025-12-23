@@ -8,6 +8,59 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import Dispatch
+
+// Drag and Drop delegate for reordering items
+struct DragRelocateDelegate<Item: Equatable>: DropDelegate {
+    let item: Item
+    @Binding var items: [Item]
+    let currentIndex: Int
+    
+    // 移除dropEntered中的重排逻辑，避免拖拽过程中频繁重排导致闪烁
+    func dropEntered(info: DropInfo) {
+        // 空实现，不在拖拽过程中进行重排
+    }
+    
+    func performDrop(info: DropInfo) -> Bool {
+        // 只在释放鼠标时进行一次实际重排
+        guard let fromIndex = getSourceIndex(from: info) else { return false }
+        
+        // Only reorder if we're at a different position
+        if fromIndex != currentIndex {
+            // Remove the item from its original position
+            let movedItem = items.remove(at: fromIndex)
+            // Insert it at the new position
+            items.insert(movedItem, at: currentIndex)
+        }
+        return true
+    }
+    
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        return DropProposal(operation: .move)
+    }
+    
+    // 获取源索引，使用semaphore确保同步获取数据
+    private func getSourceIndex(from info: DropInfo) -> Int? {
+        let providers = info.itemProviders(for: [.text])
+        guard let provider = providers.first else { return nil }
+        
+        var sourceIndex: Int?
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        // 使用completion handler获取数据
+        provider.loadDataRepresentation(forTypeIdentifier: "public.plain-text") { data, error in
+            if let data = data, let string = String(data: data, encoding: .utf8) {
+                sourceIndex = Int(string)
+            }
+            semaphore.signal()
+        }
+        
+        // 等待数据加载完成
+        _ = semaphore.wait(timeout: .now() + 0.1)
+        
+        return sourceIndex
+    }
+}
 
 // 获取主盘剩余空间的辅助函数
 extension URL {
@@ -232,8 +285,7 @@ struct SidebarView: View {
                     
                     // 使用网格布局实现横向排列，自动换行
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 30), spacing: 8)], spacing: 8) {
-                        ForEach(openedFiles, id: \.self) {
-                            url in
+                        ForEach(Array(openedFiles.enumerated()), id: \.1) { index, url in
                             HStack {
                                 Image(nsImage: getFileIcon(for: url))
                                     .resizable()
@@ -247,6 +299,12 @@ struct SidebarView: View {
                                 // 直接打开文件
                                 NSWorkspace.shared.open(url)
                             }
+                            .onDrag { NSItemProvider(object: String(index) as NSString) }
+                            .onDrop(of: [.text], delegate: DragRelocateDelegate(
+                                item: url,
+                                items: $openedFiles,
+                                currentIndex: index
+                            ))
                             .contextMenu {
                                 Button("删除") {
                                     onOpenedFileRemoved(url)
