@@ -124,84 +124,133 @@ extension ContentView {
         
         print("🔌 开始批量推出 \(externalDevices.count) 个设备")
         
+        // 初始化设备操作信息列表
+        let deviceOperations = externalDevices.map { device -> DeviceOperationInfo in
+            return DeviceOperationInfo(
+                deviceName: device.name,
+                mountPoint: device.mountPoint,
+                deviceType: device.deviceType.description,
+                status: .pending
+            )
+        }
+        
         // 显示进度窗口
         DispatchQueue.main.async {
             self.progressInfo = ProgressInfo(
                 title: "正在推出所有设备",
-                progress: 0.0,
-                bytesPerSecond: 0.0,
-                estimatedTimeRemaining: 0.0
+                deviceOperations: deviceOperations
             )
             self.isProgressWindowPresented = true
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
             var successCount = 0
-            var errorDevices: [(device: ExternalDevice, error: String)] = []
             let totalDevices = self.externalDevices.count
             
             for (index, device) in self.externalDevices.enumerated() {
                 print("🔌 开始推出设备: \(device.name)")
                 print("🔌 挂载点: \(device.mountPoint)")
                 
-                // 更新进度信息
+                // 更新设备状态为正在进行
                 DispatchQueue.main.async {
-                    self.progressInfo.title = "正在推出设备: \(device.name)"
-                    self.progressInfo.progress = Double(index) / Double(totalDevices)
+                    self.progressInfo.deviceOperations[index].status = .inProgress
                 }
+                
+                var errorMessage: String? = nil
+                var operationSuccess = false
                 
                 if !FileManager.default.fileExists(atPath: device.mountPoint) {
-                    print("⚠️ 设备挂载点不存在: \(device.name)")
-                    errorDevices.append((device: device, error: "挂载点不存在"))
-                    continue
-                }
-                
-                let workspaceResult = NSWorkspace.shared.unmountAndEjectDevice(atPath: device.mountPoint)
-                
-                if workspaceResult {
-                    print("✅ NSWorkspace推出成功: \(device.name)")
+                    print("⚠️ 设备挂载点不存在: \(device.name)，可能已经被弹出")
+                    // 挂载点不存在，视为推出成功
+                    operationSuccess = true
                     successCount += 1
                 } else {
-                    print("❌ NSWorkspace推出失败，尝试diskutil: \(device.name)")
+                    let workspaceResult = NSWorkspace.shared.unmountAndEjectDevice(atPath: device.mountPoint)
                     
-                    let task = Process()
-                    task.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
-                    task.arguments = ["eject", device.mountPoint]
-                    
-                    let errorPipe = Pipe()
-                    task.standardError = errorPipe
-                    
-                    do {
-                        try task.run()
-                        task.waitUntilExit()
+                    if workspaceResult {
+                        print("✅ NSWorkspace推出成功: \(device.name)")
+                        operationSuccess = true
+                        successCount += 1
+                    } else {
+                        print("❌ NSWorkspace推出失败，尝试diskutil: \(device.name)")
                         
-                        if task.terminationStatus == 0 {
-                            print("✅ diskutil推出成功: \(device.name)")
-                            successCount += 1
-                        } else {
-                            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                            if let errorMessage = String(data: errorData, encoding: .utf8), !errorMessage.isEmpty {
-                                print("❌ diskutil推出失败: \(device.name) - \(errorMessage)")
-                                errorDevices.append((device: device, error: errorMessage))
+                        let task = Process()
+                        task.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
+                        task.arguments = ["eject", device.mountPoint]
+                        
+                        let errorPipe = Pipe()
+                        task.standardError = errorPipe
+                        
+                        do {
+                            try task.run()
+                            task.waitUntilExit()
+                            
+                            if task.terminationStatus == 0 {
+                                print("✅ diskutil推出成功: \(device.name)")
+                                operationSuccess = true
+                                successCount += 1
                             } else {
-                                print("❌ diskutil推出失败: \(device.name) - 未知错误")
-                                errorDevices.append((device: device, error: "未知错误"))
+                                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                                if let message = String(data: errorData, encoding: .utf8), !message.isEmpty {
+                                    print("❌ diskutil推出失败: \(device.name) - \(message)")
+                                    errorMessage = message
+                                } else {
+                                    print("❌ diskutil推出失败: \(device.name) - 未知错误")
+                                    errorMessage = "未知错误"
+                                }
                             }
+                        } catch {
+                            print("❌ 执行diskutil命令失败: \(device.name) - \(error.localizedDescription)")
+                            errorMessage = error.localizedDescription
                         }
-                    } catch {
-                        print("❌ 执行diskutil命令失败: \(device.name) - \(error.localizedDescription)")
-                        errorDevices.append((device: device, error: error.localizedDescription))
+                    }
+                }
+                
+                // 更新设备状态
+                DispatchQueue.main.async {
+                    if operationSuccess {
+                        self.progressInfo.deviceOperations[index].status = .success
+                    } else {
+                        self.progressInfo.deviceOperations[index].status = .failed
+                        self.progressInfo.deviceOperations[index].errorMessage = errorMessage
+                    }
+                }
+                
+                // 添加操作日志
+                let logMessage = "\(operationSuccess ? "✅" : "❌") \(device.name): \(operationSuccess ? "推出成功" : "推出失败")"
+                print(logMessage)
+                
+                DispatchQueue.main.async {
+                    self.progressInfo.operationLog.append(logMessage)
+                }
+                
+                // 检查是否被取消
+                if Thread.isMainThread {
+                    if self.progressInfo.isCancelled {
+                        break
+                    }
+                } else {
+                    var isCancelled = false
+                    DispatchQueue.main.sync {
+                        isCancelled = self.progressInfo.isCancelled
+                    }
+                    if isCancelled {
+                        break
                     }
                 }
             }
             
-            // 更新最终进度
+            // 更新最终状态
             DispatchQueue.main.async {
-                self.progressInfo.progress = 1.0
-                self.progressInfo.title = "推出完成"
+                if self.progressInfo.isCancelled {
+                    self.progressInfo.title = "操作已取消"
+                } else {
+                    self.progressInfo.title = "推出完成"
+                    self.progressInfo.isCompleted = true
+                }
                 
                 // 所有设备都推出完成后，自动关闭窗口
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     self.isProgressWindowPresented = false
                 }
             }

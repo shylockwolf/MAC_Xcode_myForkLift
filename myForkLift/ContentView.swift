@@ -37,10 +37,7 @@ struct ContentView: View {
     // 进度窗口相关状态
     @State var isProgressWindowPresented: Bool = false
     @State var progressInfo: ProgressInfo = ProgressInfo(
-        title: "操作进行中",
-        progress: 0.0,
-        bytesPerSecond: 0.0,
-        estimatedTimeRemaining: 0.0
+        title: "操作进行中"
     )
     // 复制进度相关
     @State var copyProgress: CopyProgress?

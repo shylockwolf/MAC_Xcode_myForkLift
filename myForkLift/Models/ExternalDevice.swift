@@ -33,6 +33,16 @@ struct ExternalDevice: Identifiable, Equatable {
             case .other: return "externaldrive.badge.plus"
             }
         }
+        
+        var description: String {
+            switch self {
+            case .usb: return "USB 设备"
+            case .externalDrive: return "外部硬盘"
+            case .networkDrive: return "网络驱动器"
+            case .cdRom: return "光盘"
+            case .other: return "其他设备"
+            }
+        }
     }
     
     static func == (lhs: ExternalDevice, rhs: ExternalDevice) -> Bool {

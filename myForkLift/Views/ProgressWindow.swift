@@ -3,23 +3,77 @@ import Foundation
 
 // MARK: - 进度条窗口组件
 
+/// 设备操作状态
+enum DeviceOperationStatus {
+    case pending
+    case inProgress
+    case success
+    case failed
+    
+    var icon: String {
+        switch self {
+        case .pending:
+            return "clock"
+        case .inProgress:
+            return "arrow.clockwise"
+        case .success:
+            return "checkmark.circle"
+        case .failed:
+            return "xmark.circle"
+        }
+    }
+    
+    var color: Color {
+        switch self {
+        case .pending:
+            return .secondary
+        case .inProgress:
+            return .blue
+        case .success:
+            return .green
+        case .failed:
+            return .red
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .pending:
+            return "等待"
+        case .inProgress:
+            return "等待弹出"
+        case .success:
+            return "成功"
+        case .failed:
+            return "失败"
+        }
+    }
+}
+
+/// 设备操作信息
+struct DeviceOperationInfo: Identifiable {
+    let id = UUID()
+    let deviceName: String
+    let mountPoint: String
+    let deviceType: String
+    var status: DeviceOperationStatus
+    var errorMessage: String? = nil
+}
+
 /// 进度窗口数据模型
 struct ProgressInfo: Identifiable {
     let id = UUID()
     var title: String
-    var progress: Double
-    var bytesPerSecond: Double
-    var estimatedTimeRemaining: TimeInterval
     var isCompleted: Bool = false
     var isCancelled: Bool = false
-    var errorMessage: String? = nil
+    var deviceOperations: [DeviceOperationInfo] = []
+    var operationLog: [String] = []
 }
 
 /// 进度窗口视图
 struct ProgressWindow: View {
     @Binding var progressInfo: ProgressInfo
     var onCancel: (() -> Void)?
-    @State private var timer: Timer?
     
     var body: some View {
         VStack(spacing: 10) {
@@ -29,37 +83,65 @@ struct ProgressWindow: View {
                 .fontWeight(.medium)
                 .frame(maxWidth: .infinity, alignment: .leading)
             
-            // 进度条
-            ProgressView(value: progressInfo.progress, total: 1.0)
-                .progressViewStyle(LinearProgressViewStyle())
-                .frame(height: 16)
-            
-            // 进度信息
-            HStack {
-                Text("进度: \(Int(progressInfo.progress * 100))%")
-                    .font(.caption)
-                Spacer()
-                
-                if progressInfo.isCompleted {
-                    Text("完成")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                } else if progressInfo.isCancelled {
-                    Text("已取消")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                } else if let errorMessage = progressInfo.errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundColor(.red)
+            // 设备操作列表 - 滚动显示
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(progressInfo.deviceOperations) { operation in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
+                                Image(systemName: operation.status.icon)
+                                    .foregroundColor(operation.status.color)
+                                    .font(.system(size: 16))
+                                
+                                VStack(alignment: .leading) {
+                                    Text(operation.deviceName)
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                    
+                                    // 设备详细信息
+                                    HStack(spacing: 16) {
+                                        Text("挂载点: \(operation.mountPoint)")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Text("类型: \(operation.deviceType)")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                // 状态文本
+                                Text(operation.status.description)
+                                    .font(.caption)
+                                    .foregroundColor(operation.status.color)
+                            }
+                            
+                            // 错误信息（如果有）
+                            if let errorMessage = operation.errorMessage {
+                                Text(errorMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.leading, 28)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(Color(.controlBackgroundColor))
+                        .cornerRadius(6)
+                    }
                 }
+                .padding(4)
             }
+            .frame(minHeight: 150, maxHeight: 300)
+            .border(Color(.separatorColor), width: 1)
+            .cornerRadius(6)
             
             // 按钮
             HStack {
                 Spacer()
                 
-                if !progressInfo.isCompleted && !progressInfo.isCancelled && progressInfo.errorMessage == nil {
+                if !progressInfo.isCompleted && !progressInfo.isCancelled {
                     Button(action: {
                         progressInfo.isCancelled = true
                         onCancel?()
@@ -81,40 +163,11 @@ struct ProgressWindow: View {
                 }
             }
         }
-        .padding(6)
-        .frame(minWidth: 300, minHeight: 75)
+        .padding(12)
+        .frame(minWidth: 400, minHeight: 250)
         .background(Color(NSColor.windowBackgroundColor))
         .cornerRadius(8)
         .shadow(radius: 12)
-    }
-    
-    /// 格式化字节数显示
-    private func formatBytes(bytes: Double) -> String {
-        let units = ["B", "KB", "MB", "GB", "TB"]
-        var size = bytes
-        var unitIndex = 0
-        
-        while size >= 1024 && unitIndex < units.count - 1 {
-            size /= 1024
-            unitIndex += 1
-        }
-        
-        return String(format: "%.1f %@", size, units[unitIndex])
-    }
-    
-    /// 格式化时间显示
-    private func formatTime(interval: TimeInterval) -> String {
-        let hours = Int(interval) / 3600
-        let minutes = Int(interval) % 3600 / 60
-        let seconds = Int(interval) % 60
-        
-        if hours > 0 {
-            return String(format: "%d小时%d分钟%d秒", hours, minutes, seconds)
-        } else if minutes > 0 {
-            return String(format: "%d分钟%d秒", minutes, seconds)
-        } else {
-            return String(format: "%d秒", seconds)
-        }
     }
 }
 
