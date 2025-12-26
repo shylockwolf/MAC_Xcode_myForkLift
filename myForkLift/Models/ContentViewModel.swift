@@ -21,6 +21,10 @@ final class ContentViewModel: ObservableObject {
     @Published var leftSelectedItems: Set<URL> = []
     @Published var rightSelectedItems: Set<URL> = []
     
+    /// 文件选择状态管理器
+    @Published var leftSelectionState: FileSelectionState = FileSelectionState()
+    @Published var rightSelectionState: FileSelectionState = FileSelectionState()
+    
     /// 用于触发文件列表刷新的标记
     @Published var refreshTrigger: UUID = UUID()
     

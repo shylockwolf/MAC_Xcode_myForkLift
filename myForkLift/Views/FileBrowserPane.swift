@@ -27,11 +27,95 @@ struct FileBrowserPane: View {
     let onActivate: () -> Void
     let refreshTrigger: UUID
     let panelId: String // 用于识别是左面板还是右面板
+    @ObservedObject var selectionState: FileSelectionState
     @State private var items: [URL] = []
-    @State private var lastTapTime: Date = Date.distantPast
-    @State private var lastTapItem: URL? = nil
-    @State private var lastShiftClickItem: URL? = nil
     @State private var cancellables = Set<AnyCancellable>()
+    @State private var keyboardFocusView: NSView?
+    @State private var isKeyboardSelection: Bool = false
+    
+    /// 处理键盘输入，定位到对应字母开头的文件
+    func handleKeyPress(_ key: String) {
+        guard !items.isEmpty else { return }
+        
+        // 查找以输入字母开头的第一个文件或文件夹
+        let lowercaseKey = key.lowercased()
+        
+        // 从当前选中项的下一个位置开始搜索，实现循环导航
+        let startIndex = selectedItems.first.flatMap { items.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+        
+        // 先查找从startIndex开始的匹配项
+        if let targetIndex = findItemByKey(key: lowercaseKey, startIndex: startIndex) {
+            let targetItem = items[targetIndex]
+            isKeyboardSelection = true
+            selectedItems = [targetItem]
+            selectionState.lastShiftClickItem = targetItem
+            return
+        }
+        
+        // 如果没找到，从开头开始搜索（循环）
+        if let targetIndex = findItemByKey(key: lowercaseKey, startIndex: 0) {
+            let targetItem = items[targetIndex]
+            isKeyboardSelection = true
+            selectedItems = [targetItem]
+            selectionState.lastShiftClickItem = targetItem
+        }
+    }
+    
+    /// 根据按键查找项目的辅助函数
+    private func findItemByKey(key: String, startIndex: Int) -> Int? {
+        for i in startIndex..<items.count {
+            let name = items[i].lastPathComponent.lowercased()
+            if name.hasPrefix(key) {
+                return i
+            }
+        }
+        return nil
+    }
+    
+    /// 处理特殊键盘操作（如方向键导航）
+    func handleSpecialKey(_ key: String, modifier: NSEvent.ModifierFlags) {
+        guard !items.isEmpty else { return }
+        
+        switch key {
+        case "up", "down", "left", "right":
+            handleArrowKeyNavigation(key: key, modifier: modifier)
+        default:
+            break
+        }
+    }
+    
+    /// 处理方向键导航
+    private func handleArrowKeyNavigation(key: String, modifier: NSEvent.ModifierFlags) {
+        guard let currentIndex = selectedItems.first.flatMap({ items.firstIndex(of: $0) }) else {
+            // 如果没有选中项，选中第一项
+            if !items.isEmpty {
+                isKeyboardSelection = true
+                selectedItems = [items[0]]
+                selectionState.lastShiftClickItem = items[0]
+            }
+            return
+        }
+        
+        var targetIndex: Int
+        
+        switch key {
+        case "up":
+            targetIndex = max(0, currentIndex - 1)
+        case "down":
+            targetIndex = min(items.count - 1, currentIndex + 1)
+        case "left":
+            targetIndex = 0
+        case "right":
+            targetIndex = items.count - 1
+        default:
+            return
+        }
+        
+        // 普通方向键：单选（忽略Shift修饰键）
+        isKeyboardSelection = true
+        selectedItems = [items[targetIndex]]
+        selectionState.lastShiftClickItem = items[targetIndex]
+    }
     
     // 文件信息显示选项 - 从外部传入
     @Binding var showFileSize: Bool
@@ -211,126 +295,229 @@ struct FileBrowserPane: View {
     
     // 简化的文件点击处理
     private func handleFileClick(item: URL) {
+        // 设置为非键盘选择
+        isKeyboardSelection = false
+        
         // 激活窗口
         if !isActive {
-            print("🔥 文件点击触发激活")
             onActivate()
         }
         
-        // 获取当前事件检测Shift键
+        // 获取修饰键状态
         let currentEvent = NSApp.currentEvent
-        let isShiftPressed = currentEvent?.modifierFlags.contains(.shift) ?? false
+        let modifierFlags = currentEvent?.modifierFlags ?? []
+        let isShiftPressed = modifierFlags.contains(.shift)
+        let isCommandPressed = modifierFlags.contains(.command)
         
-        print("📁 点击文件: \(item.lastPathComponent)")
-        print("⌨️ Shift键: \(isShiftPressed)")
+        // 使用日志器记录调试信息
+        ShiftClickLogger.shared.log("=== CLICK DEBUG ===")
+        ShiftClickLogger.shared.log("File: \(item.lastPathComponent)")
+        ShiftClickLogger.shared.log("Raw modifierFlags: \(modifierFlags.rawValue)")
+        ShiftClickLogger.shared.log("Shift: \(isShiftPressed), Command: \(isCommandPressed)")
+        ShiftClickLogger.shared.log("Anchor before: \(selectionState.rangeSelectionAnchor?.lastPathComponent ?? "NONE")")
+        ShiftClickLogger.shared.log("lastShiftClickItem: \(selectionState.lastShiftClickItem?.lastPathComponent ?? "NONE")")
+        ShiftClickLogger.shared.log("Selected: \(selectedItems.count) items")
+        if selectedItems.count <= 3 {
+            let names = selectedItems.map { $0.lastPathComponent }.joined(separator: ", ")
+            ShiftClickLogger.shared.log("Selected items: \(names)")
+        }
+        ShiftClickLogger.shared.log("=================")
         
         // 检测双击
         let currentTime = Date()
-        let timeSinceLastTap = currentTime.timeIntervalSince(lastTapTime)
-        let isDoubleClick = timeSinceLastTap < 0.2 && lastTapItem == item
+        let timeSinceLastTap = currentTime.timeIntervalSince(selectionState.lastTapTime)
+        let isDoubleClick = timeSinceLastTap < 0.2 && selectionState.lastTapItem == item
         
         if isDoubleClick {
             // 双击处理
-            print("🖱️ 双击文件: \(item.lastPathComponent)")
+            print("  - 检测到双击")
             if isDirectory(item) {
-                print("📂 双击目录，进入目录")
                 currentURL = item
-                // 进入目录时清空选择
-                let previousCount = selectedItems.count
                 selectedItems.removeAll()
-                lastShiftClickItem = nil
-                print("📂 进入目录，清空了 \(previousCount) 个选择")
+                selectionState.reset()
+                print("  - 双击目录，清空锚点")
             } else {
-                print("📄 双击文件，打开文件")
-                // 双击文件时清空其他选择，只选中当前文件
-                let previousCount = selectedItems.count
                 selectedItems.removeAll()
                 selectedItems.insert(item)
-                print("📄 双击文件，清空了 \(previousCount) 个选择，选中当前文件: \(item.lastPathComponent)")
-                // 3. 打开这个文件
                 NSWorkspace.shared.open(item)
+                print("  - 双击文件")
             }
         } else if isShiftPressed {
             // Shift+点击：范围选择
-            print("🎯 Shift+点击 - 执行范围选择")
-            performRangeSelection(fromItem: lastShiftClickItem, toItem: item)
-            lastShiftClickItem = item
+            print("  - 执行Shift+点击处理")
+            handleShiftClick(item: item)
+        } else if isCommandPressed {
+            // Command+点击：切换选择状态
+            print("  - 执行Command+点击处理")
+            handleCommandClick(item: item)
         } else {
-            // 普通点击：切换单个选择
-            print("👆 普通点击: \(item.lastPathComponent)")
-            let previousCount = selectedItems.count
-            if selectedItems.contains(item) {
-                selectedItems.remove(item)
-                print("👆 取消选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
-            } else {
-                selectedItems.insert(item)
-                print("👆 添加选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
-            }
-            lastShiftClickItem = item
+            // 普通点击：选中单个文件
+            ShiftClickLogger.shared.log("NORMAL CLICK - Setting anchor to: \(item.lastPathComponent)")
+            selectedItems.removeAll()
+            selectedItems.insert(item)
+            // 普通点击时设置新的范围选择锚点
+            selectionState.setAnchor(item)
+            selectionState.lastShiftClickItem = item
+            ShiftClickLogger.shared.log("Anchor after normal click: \(selectionState.getAnchorInfo())")
         }
         
-        lastTapTime = currentTime
-        lastTapItem = item
+        selectionState.lastTapTime = currentTime
+        selectionState.lastTapItem = item
     }
     
-    // 执行范围选择（Shift+点击）
-    private func performRangeSelection(fromItem: URL?, toItem: URL) {
-        guard let fromItem = fromItem else {
-            // 如果没有起始点，直接选择当前项
-            print("🎯 范围选择：没有起始点，选择单个项目")
+    // 处理Shift+点击：范围选择 - 简化版本
+    private func handleShiftClick(item: URL) {
+        ShiftClickLogger.shared.log("=== SHIFT CLICK ===")
+        ShiftClickLogger.shared.log("Target: \(item.lastPathComponent)")
+        ShiftClickLogger.shared.log("Anchor: \(selectionState.rangeSelectionAnchor?.lastPathComponent ?? "NONE")")
+        
+        let anchor: URL
+        if selectionState.rangeSelectionAnchor != nil {
+            // 使用现有的锚点
+            anchor = selectionState.rangeSelectionAnchor!
+            ShiftClickLogger.shared.log("Using existing rangeSelectionAnchor")
+        } else {
+            // 没有锚点，设置当前点击作为锚点
+            ShiftClickLogger.shared.log("No anchor, setting current item as anchor")
             selectedItems.removeAll()
-            selectedItems.insert(toItem)
+            selectedItems.insert(item)
+            selectionState.setAnchor(item)
+            selectionState.lastShiftClickItem = item
             return
         }
         
-        print("🎯 开始范围选择: \(fromItem.lastPathComponent) -> \(toItem.lastPathComponent)")
-        print("🎯 当前items数组长度: \(items.count)")
+        ShiftClickLogger.shared.log("Using anchor: \(anchor.lastPathComponent)")
         
-        // 找到两个项目在列表中的索引
-        guard let fromIndex = items.firstIndex(of: fromItem),
-              let toIndex = items.firstIndex(of: toItem) else {
-            print("❌ 无法找到项目的索引")
-            print("❌ fromIndex: \(items.firstIndex(of: fromItem) ?? -1), toIndex: \(items.firstIndex(of: toItem) ?? -1)")
-            // 回退到单个选择
+        // 执行范围选择 - 使用可靠的findItemIndex方法
+        let fromIndex = findItemIndex(anchor)
+        let toIndex = findItemIndex(item)
+        
+        guard let fromIdx = fromIndex, let toIdx = toIndex else {
+            ShiftClickLogger.shared.log("Cannot find indices, selecting single item")
             selectedItems.removeAll()
-            selectedItems.insert(toItem)
+            selectedItems.insert(item)
+            selectionState.setAnchor(item)
+            selectionState.lastShiftClickItem = item
             return
         }
         
-        // 边界检查
-        guard fromIndex >= 0 && fromIndex < items.count && toIndex >= 0 && toIndex < items.count else {
-            print("❌ 索引超出边界: fromIndex=\(fromIndex), toIndex=\(toIndex), items.count=\(items.count)")
-            selectedItems.removeAll()
-            selectedItems.insert(toItem)
-            return
-        }
+        let startIndex = min(fromIdx, toIdx)
+        let endIndex = max(fromIdx, toIdx)
         
-        print("🎯 范围选择: \(fromItem.lastPathComponent) [\(fromIndex)] -> \(toItem.lastPathComponent) [\(toIndex)]")
+        ShiftClickLogger.shared.log("Range: \(startIndex) to \(endIndex)")
         
-        // 清空当前选择
+        // 执行范围选择
         selectedItems.removeAll()
-        
-        // 计算选择范围
-        let startIndex = min(fromIndex, toIndex)
-        let endIndex = max(fromIndex, toIndex)
-        
-        print("🎯 选择范围: \(startIndex) -> \(endIndex)")
-        
-        // 选择范围内的所有项目
-        var selectedCount = 0
         for index in startIndex...endIndex {
             if index < items.count {
                 selectedItems.insert(items[index])
-                selectedCount += 1
-            } else {
-                print("⚠️ 跳过超出边界的索引: \(index)")
             }
         }
         
-        print("✅ 范围选择完成，选中了 \(selectedItems.count) 个项目（预期 \(selectedCount) 个）")
+        // 更新锚点
+        selectionState.setAnchor(item)
+        selectionState.lastShiftClickItem = item
+        
+        // 验证状态是否正确设置
+        ShiftClickLogger.shared.log("After setting anchor - rangeSelectionAnchor: \(selectionState.rangeSelectionAnchor?.lastPathComponent ?? "STILL_NIL")")
+        
+        ShiftClickLogger.shared.logItems(Array(selectedItems), prefix: "SELECTED")
+        ShiftClickLogger.shared.log("=== END SHIFT CLICK ===")
     }
     
-    private func loadItems() {
+    // 多种方式查找项目索引
+    private func findItemIndex(_ item: URL) -> Int? {
+        ShiftClickLogger.shared.log("Finding index for: \(item.lastPathComponent)")
+        
+        // 方法1: 直接URL比较
+        if let index = items.firstIndex(where: { $0 == item }) {
+            ShiftClickLogger.shared.log("Found by direct URL compare: \(index)")
+            return index
+        }
+        
+        // 方法2: lastPathComponent比较
+        if let index = items.firstIndex(where: { $0.lastPathComponent == item.lastPathComponent }) {
+            ShiftClickLogger.shared.log("Found by filename: \(index)")
+            return index
+        }
+        
+        // 方法3: path比较
+        if let index = items.firstIndex(where: { $0.path == item.path }) {
+            ShiftClickLogger.shared.log("Found by path: \(index)")
+            return index
+        }
+        
+        // 方法4: absoluteString比较
+        if let index = items.firstIndex(where: { $0.absoluteString == item.absoluteString }) {
+            ShiftClickLogger.shared.log("Found by absoluteString: \(index)")
+            return index
+        }
+        
+        ShiftClickLogger.shared.log("NOT FOUND by any method")
+        return nil
+    }
+    
+    // 处理Command+点击：切换选择状态
+    private func handleCommandClick(item: URL) {
+        ShiftClickLogger.shared.log("COMMAND CLICK - \(item.lastPathComponent)")
+        if selectedItems.contains(item) {
+            selectedItems.remove(item)
+            ShiftClickLogger.shared.log("Removed from selection")
+        } else {
+            selectedItems.insert(item)
+            ShiftClickLogger.shared.log("Added to selection")
+        }
+        // Command+点击时也设置新的锚点
+        selectionState.setAnchor(item)
+        selectionState.lastShiftClickItem = item
+        ShiftClickLogger.shared.log("Command click set anchor to: \(item.lastPathComponent)")
+    }
+    
+    // 范围选择函数
+    private func performRangeSelection(fromItem: URL?, toItem: URL) {
+        print("=== RANGE SELECTION ===")
+        
+        guard let fromItem = fromItem else {
+            print("No fromItem, selecting single item")
+            selectedItems.removeAll()
+            selectedItems.insert(toItem)
+            return
+        }
+        
+        // 查找项目在列表中的索引
+        let fromIndex = items.firstIndex(where: { $0.absoluteString == fromItem.absoluteString })
+        let toIndex = items.firstIndex(where: { $0.absoluteString == toItem.absoluteString })
+        
+        guard let fromIdx = fromIndex, let toIdx = toIndex else {
+            print("Cannot find items, selecting single item")
+            selectedItems.removeAll()
+            selectedItems.insert(toItem)
+            return
+        }
+        
+        print("From index: \(fromIdx) (\(fromItem.lastPathComponent))")
+        print("To index: \(toIdx) (\(toItem.lastPathComponent))")
+        
+        // 计算选择范围
+        let startIndex = min(fromIdx, toIdx)
+        let endIndex = max(fromIdx, toIdx)
+        
+        print("Range: \(startIndex) to \(endIndex)")
+        
+        // 清空当前选择并添加范围内的所有项目
+        selectedItems.removeAll()
+        for index in startIndex...endIndex {
+            if index < items.count {
+                selectedItems.insert(items[index])
+                print("Selected: \(items[index].lastPathComponent)")
+            }
+        }
+        
+        print("Total selected: \(selectedItems.count)")
+        print("========================")
+    }
+    
+    private func loadItems(resetSelection: Bool = true) {
         NSLog("🔄 Loading items for directory: \(currentURL.path)")
         
         if !FileManager.default.fileExists(atPath: currentURL.path) {
@@ -392,14 +579,18 @@ struct FileBrowserPane: View {
             
             DispatchQueue.main.async {
                 self.items = sortedItems
-                // 切换目录时重置Shift选择记录
-                self.lastShiftClickItem = nil
+                // 根据参数决定是否重置Shift选择记录
+                if resetSelection {
+                    self.selectionState.reset()
+                }
             }
         } catch {
             NSLog("❌ Error loading directory contents for \(currentURL.path): \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.items = []
-                self.lastShiftClickItem = nil
+                if resetSelection {
+                    self.selectionState.reset()
+                }
             }
         }
     }
@@ -587,7 +778,7 @@ struct FileBrowserPane: View {
                                     sortField = .type
                                     isAscending = false // 第一次点击降序
                                 }
-                                loadItems()
+                                loadItems(resetSelection: false)
                             }
                             
                             // 分隔线和拖拽区域
@@ -642,7 +833,7 @@ struct FileBrowserPane: View {
                                     sortField = .size
                                     isAscending = false // 第一次点击降序
                                 }
-                                loadItems()
+                                loadItems(resetSelection: false)
                             }
                             
                             // 分隔线和拖拽区域
@@ -697,7 +888,7 @@ struct FileBrowserPane: View {
                                     sortField = .date
                                     isAscending = false // 第一次点击降序
                                 }
-                                loadItems()
+                                loadItems(resetSelection: false)
                             }
                         }
                         
@@ -714,9 +905,10 @@ struct FileBrowserPane: View {
                         // 分隔线
                         Divider()
                         
-                        // 文件列表
-                        List(items, id: \.self) { item in
-                        HStack(spacing: 8) {
+                        // 文件列表 - 包装在ScrollViewReader中以支持自动滚动
+                        ScrollViewReader { proxy in
+                            List(items, id: \.self) { item in
+                                HStack(spacing: 8) {
                             // 多选复选框
                             Button(action: {
                                 // 先激活当前面板
@@ -725,13 +917,36 @@ struct FileBrowserPane: View {
                                     onActivate()
                                 }
                                 
-                                let previousCount = selectedItems.count
-                                if selectedItems.contains(item) {
-                                    selectedItems.remove(item)
-                                    print("☑️ 复选框取消选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
+                                // 检测修饰键状态
+                                let currentEvent = NSApp.currentEvent
+                                let modifierFlags = currentEvent?.modifierFlags ?? []
+                                let isShiftPressed = modifierFlags.contains(.shift)
+                                let isCommandPressed = modifierFlags.contains(.command)
+                                
+                                print("🔲 复选框点击 - Shift: \(isShiftPressed), Command: \(isCommandPressed)")
+                                
+                                if isShiftPressed {
+                                    // Shift+点击复选框：执行范围选择
+                                    print("🔲 复选框Shift+点击，执行范围选择")
+                                    handleShiftClick(item: item)
+                                } else if isCommandPressed {
+                                    // Command+点击复选框：切换选择状态
+                                    print("🔲 复选框Command+点击，切换选择")
+                                    handleCommandClick(item: item)
                                 } else {
-                                    selectedItems.insert(item)
-                                    print("☑️ 复选框添加选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
+                                    // 普通点击复选框：切换选择状态（保持原有行为）
+                                    let previousCount = selectedItems.count
+                                    if selectedItems.contains(item) {
+                                        selectedItems.remove(item)
+                                        print("☑️ 复选框取消选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
+                                    } else {
+                                        selectedItems.insert(item)
+                                        print("☑️ 复选框添加选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
+                                    }
+                                    
+                                    // 普通复选框点击也需要设置锚点以保持一致性
+                                    selectionState.setAnchor(item)
+                                    selectionState.lastShiftClickItem = item
                                 }
                             }) {
                                 Image(systemName: selectedItems.contains(item) ? "checkmark.square.fill" : "square")
@@ -825,12 +1040,41 @@ struct FileBrowserPane: View {
                         }
                         .listStyle(.plain)
                         .frame(minWidth: contentMinWidth, alignment: .leading)
+                        
+                        // 当选中项改变时，只有在通过键盘选择时才自动滚动到第一个选中项
+                        // 如果是通过鼠标点击选择的（项目已经可见），则不滚动
+                        .onChange(of: selectedItems) { newSelectedItems in
+                            if let firstSelected = newSelectedItems.first {
+                                // 只有当是通过键盘选择时才自动滚动
+                                if isKeyboardSelection {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        proxy.scrollTo(firstSelected, anchor: .top)
+                                    }
+                                    
+                                    // 重置键盘选择标志
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isKeyboardSelection = false
+                                    }
+                                }
+                            }
+                        }
+                        }
                     }
                 }
             }
             
             // 移除了透明点击覆盖层，因为它会拦截文件点击事件
             // 文件列表和路径栏的点击事件会自行处理激活逻辑
+            
+            // 键盘输入捕获器 - 用于快速定位文件和键盘导航
+            KeyboardInputCapturer(
+                onKeyPress: handleKeyPress,
+                onSpecialKey: handleSpecialKey,
+                isActive: isActive,
+                parent: keyboardFocusView
+            )
+                .frame(width: 0, height: 0)
+                .background(Color.clear)
         }
         .frame(minWidth: 300, minHeight: 200)
         .onAppear {
@@ -848,7 +1092,7 @@ struct FileBrowserPane: View {
         }
         .onChange(of: refreshTrigger) { _ in
             NSLog("🔄 Refresh trigger changed, reloading items")
-            loadItems()
+            loadItems(resetSelection: false)
         }
     }
 }

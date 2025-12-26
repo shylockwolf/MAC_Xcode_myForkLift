@@ -50,7 +50,7 @@ struct myForkLiftApp: App {
     private func showAboutDialog() {
         let alert = NSAlert()
         alert.messageText = "myForkLift"
-        alert.informativeText = "Version v1.4.5\n\nAuthor: Shylock Wolf\nCreation Date: 2025-12-23"
+        alert.informativeText = "Version v1.4.6\n\nAuthor: Shylock Wolf\nCreation Date: 2025-12-26"
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }

@@ -39,9 +39,9 @@ enum DeviceOperationStatus {
     var description: String {
         switch self {
         case .pending:
-            return "等待"
-        case .inProgress:
             return "等待弹出"
+        case .inProgress:
+            return "正在弹出"
         case .success:
             return "成功"
         case .failed:
