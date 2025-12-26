@@ -66,7 +66,6 @@ struct myForkLiftApp: App {
                 // 将选中的文件添加到openedFiles数组中
                 var hasChanges = false
                 for url in openPanel.urls {
-                    print("选中的文件: \(url.path)")
                     // 避免重复添加相同的文件
                     if !viewModel.openedFiles.contains(url) {
                         viewModel.openedFiles.append(url)

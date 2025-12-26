@@ -6,7 +6,6 @@ enum ExternalDeviceService {
     
     /// 检测当前系统中的所有外部设备
     static func detectDevices() -> [ExternalDevice] {
-        print("🔍 开始检测外部设备...")
         
         var detectedDevices: [ExternalDevice] = []
         
@@ -15,12 +14,10 @@ enum ExternalDeviceService {
         
         do {
             let volumes = try FileManager.default.contentsOfDirectory(atPath: volumesPath)
-            print("🔍 发现的卷: \(volumes)")
             
             for volume in volumes {
                 // 跳过空卷名，避免创建无效的设备信息
                 guard !volume.isEmpty else {
-                    print("⚠️ 跳过空卷名")
                     continue
                 }
                 
@@ -31,7 +28,6 @@ enum ExternalDeviceService {
                     continue
                 }
                 
-                print("🔍 检测到卷: \(volume)")
                 
                 // 获取卷信息
                 if let volumeInfo = getVolumeInfo(volumeURL: volumeURL, volumeName: volume) {
@@ -40,7 +36,6 @@ enum ExternalDeviceService {
             }
             
         } catch {
-            print("❌ 读取Volumes目录失败: \(error.localizedDescription)")
         }
         
         return detectedDevices
@@ -73,7 +68,6 @@ enum ExternalDeviceService {
         do {
             volumeAttributes = try FileManager.default.attributesOfFileSystem(forPath: volumeURL.path)
         } catch {
-            print("❌ 获取卷属性失败: \(error.localizedDescription)")
             return nil
         }
         
@@ -90,7 +84,6 @@ enum ExternalDeviceService {
             deviceType: deviceType
         )
         
-        print("✅ 创建设备信息: \(device.name) (\(deviceType))")
         return device
     }
     
@@ -127,7 +120,6 @@ enum ExternalDeviceService {
         let outputPipe = Pipe()
         task.standardOutput = outputPipe
         
-        print("🔌 执行命令: diskutil \(command) '\(device.mountPoint)'")
         
         do {
             try task.run()
@@ -139,15 +131,11 @@ enum ExternalDeviceService {
             let output = String(data: outputData, encoding: .utf8) ?? ""
             let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
             
-            print("🔌 命令输出: \(output)")
-            print("🔌 错误输出: \(errorOutput)")
-            print("🔌 退出状态: \(task.terminationStatus)")
             
             if task.terminationStatus == 0 {
                 completion(true, "")
             } else if command == "unmount" {
                 // 如果unmount失败，尝试force unmount
-                print("🔌 尝试force unmount")
                 let forceTask = Process()
                 forceTask.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
                 forceTask.arguments = ["unmount", "-force", device.mountPoint]
@@ -157,7 +145,6 @@ enum ExternalDeviceService {
                 let forceOutputPipe = Pipe()
                 forceTask.standardOutput = forceOutputPipe
                 
-                print("🔌 执行命令: diskutil unmount -force '\(device.mountPoint)'")
                 
                 do {
                     try forceTask.run()
@@ -166,9 +153,6 @@ enum ExternalDeviceService {
                     let forceOutput = String(data: forceOutputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                     let forceErrorOutput = String(data: forceErrorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
                     
-                    print("🔌 Force命令输出: \(forceOutput)")
-                    print("🔌 Force错误输出: \(forceErrorOutput)")
-                    print("🔌 Force退出状态: \(forceTask.terminationStatus)")
                     
                     if forceTask.terminationStatus == 0 {
                         completion(true, "")
@@ -182,7 +166,6 @@ enum ExternalDeviceService {
                 completion(false, errorOutput)
             }
         } catch {
-            print("❌ 执行推出命令失败: \(error.localizedDescription)")
             completion(false, error.localizedDescription)
         }
     }

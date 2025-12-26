@@ -67,11 +67,8 @@ final class ContentViewModel: ObservableObject {
         let leftPath = leftPaneURL.path
         let rightPath = rightPaneURL.path
         
-        print("💾 保存窗口路径: 左=\(leftPath), 右=\(rightPath)")
         let leftType = "本地"
         let rightType = "本地"
-        print("💾 左面板类型: \(leftType)")
-        print("💾 右面板类型: \(rightType)")
         
         UserDefaults.standard.set(leftPath, forKey: leftPaneURLKey)
         UserDefaults.standard.set(rightPath, forKey: rightPaneURLKey)
@@ -79,9 +76,7 @@ final class ContentViewModel: ObservableObject {
         // 验证保存是否成功
         if let savedLeft = UserDefaults.standard.string(forKey: leftPaneURLKey),
            let savedRight = UserDefaults.standard.string(forKey: rightPaneURLKey) {
-            print("✅ 路径保存成功: 左=\(savedLeft), 右=\(savedRight)")
         } else {
-            print("❌ 路径保存失败")
         }
     }
     
@@ -90,17 +85,12 @@ final class ContentViewModel: ObservableObject {
         defaultLeft: URL,
         defaultRight: URL
     ) -> (left: URL, right: URL) {
-        print("🔍 开始加载窗口路径...")
         
         guard let leftPath = UserDefaults.standard.string(forKey: leftPaneURLKey),
               let rightPath = UserDefaults.standard.string(forKey: rightPaneURLKey) else {
-            print("📂 没有找到保存的窗口路径数据，使用默认路径")
-            print("📂 默认左窗口路径: \(defaultLeft.path)")
-            print("📂 默认右窗口路径: \(defaultRight.path)")
             return (defaultLeft, defaultRight)
         }
         
-        print("🔍 从UserDefaults读取到路径: 左=\(leftPath), 右=\(rightPath)")
         
         // 处理路径格式问题
         let cleanLeftPath = leftPath.hasPrefix("//") ? String(leftPath.dropFirst()) : leftPath
@@ -109,7 +99,6 @@ final class ContentViewModel: ObservableObject {
         let leftURL = URL(fileURLWithPath: cleanLeftPath)
         let rightURL = URL(fileURLWithPath: cleanRightPath)
         
-        print("🔍 清理后的路径: 左=\(cleanLeftPath), 右=\(cleanRightPath)")
         
 
         
@@ -119,21 +108,13 @@ final class ContentViewModel: ObservableObject {
         // 验证左路径是否存在
         if FileManager.default.fileExists(atPath: leftURL.path) {
             finalLeft = leftURL
-            print("✅ 已恢复左窗口路径: \(leftURL.path) (本地)")
         } else {
-            print("⚠️ 左窗口路径不存在，使用默认路径")
-            print("📂 原因: 路径 '\\(leftURL.path)' 不存在")
-            print("📂 设置左窗口为默认路径: \(defaultLeft.path)")
         }
         
         // 验证右路径是否存在
         if FileManager.default.fileExists(atPath: rightURL.path) {
             finalRight = rightURL
-            print("✅ 已恢复右窗口路径: \(rightURL.path) (本地)")
         } else {
-            print("⚠️ 右窗口路径不存在，使用默认路径")
-            print("📂 原因: 路径 '\\(rightURL.path)' 不存在")
-            print("📂 设置右窗口为默认路径: \(defaultRight.path)")
         }
         
         return (finalLeft, finalRight)
@@ -147,7 +128,6 @@ final class ContentViewModel: ObservableObject {
         UserDefaults.standard.set(["x": position.x, "y": position.y], forKey: windowPositionKey)
         UserDefaults.standard.set(["width": size.width, "height": size.height], forKey: windowSizeKey)
         
-        print("💾 已保存窗口位置和大小")
     }
     
     /// 从 UserDefaults 读取窗口位置和大小并应用到窗口
@@ -168,7 +148,6 @@ final class ContentViewModel: ObservableObject {
             window.setFrame(newFrame, display: true)
         }
         
-        print("🔍 已加载窗口位置和大小")
     }
     
     /// 保存文件信息显示选项
@@ -188,14 +167,12 @@ final class ContentViewModel: ObservableObject {
         UserDefaults.standard.set(rightShowFileDate, forKey: rightShowFileDateKey)
         UserDefaults.standard.set(rightShowFileType, forKey: rightShowFileTypeKey)
         
-        print("💾 已保存文件信息显示选项")
     }
     
     /// 保存打开的文件列表
     func saveOpenedFiles() {
         let filePaths = openedFiles.map { $0.path }
         UserDefaults.standard.set(filePaths, forKey: openedFilesKey)
-        print("💾 已保存打开的文件列表: \(filePaths)")
     }
     
     /// 加载打开的文件列表
@@ -207,13 +184,10 @@ final class ContentViewModel: ObservableObject {
                 if FileManager.default.fileExists(atPath: path) {
                     return url
                 } else {
-                    print("⚠️ 文件不存在，跳过加载: \(path)")
                     return nil
                 }
             }
-            print("🔍 已加载打开的文件列表: \(openedFiles)")
         } else {
-            print("📂 没有找到保存的打开文件列表")
         }
     }
     
@@ -234,7 +208,6 @@ final class ContentViewModel: ObservableObject {
         rightShowFileDate = UserDefaults.standard.bool(forKey: rightShowFileDateKey)
         rightShowFileType = UserDefaults.standard.bool(forKey: rightShowFileTypeKey)
         
-        print("🔍 已加载文件信息显示选项")
     }
     
     // MARK: - 选择相关
@@ -245,12 +218,9 @@ final class ContentViewModel: ObservableObject {
         switch activePane {
         case .left:
             result = leftSelectedItems
-            print("🔍 getCurrentSelectedItems: 左面板激活，选中 \(leftSelectedItems.count) 项")
         case .right:
             result = rightSelectedItems
-            print("🔍 getCurrentSelectedItems: 右面板激活，选中 \(rightSelectedItems.count) 项")
         }
-        print("🔍 总选择状态 - 左: \(leftSelectedItems.count) 项, 右: \(rightSelectedItems.count) 项")
         return result
     }
     
@@ -267,8 +237,6 @@ final class ContentViewModel: ObservableObject {
     
     /// 设置当前激活面板，并自动清空另一个面板的选中状态
     func setActivePane(_ pane: Pane) {
-        print("🔄 切换面板: \(activePane) -> \(pane)")
-        print("🔄 切换前选择状态 - 左: \(leftSelectedItems.count) 项, 右: \(rightSelectedItems.count) 项")
         
         activePane = pane
         
@@ -277,16 +245,13 @@ final class ContentViewModel: ObservableObject {
         case .left:
             if !rightSelectedItems.isEmpty {
                 rightSelectedItems.removeAll()
-                print("🔄 已清空右面板选择")
             }
         case .right:
             if !leftSelectedItems.isEmpty {
                 leftSelectedItems.removeAll()
-                print("🔄 已清空左面板选择")
             }
         }
         
-        print("🔄 切换后选择状态 - 左: \(leftSelectedItems.count) 项, 右: \(rightSelectedItems.count) 项")
     }
     
     /// 触发文件列表刷新

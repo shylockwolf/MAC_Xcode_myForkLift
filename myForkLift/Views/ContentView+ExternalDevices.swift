@@ -14,13 +14,9 @@ extension ContentView {
         let detectedDevices = ExternalDeviceService.detectDevices()
         
         if externalDevices != detectedDevices {
-            print("🔄 外部设备列表发生变化")
-            print("📋 之前的设备: \(externalDevices.map { $0.name })")
-            print("📋 当前设备: \(detectedDevices.map { $0.name })")
             
             externalDevices = detectedDevices
         } else {
-            print("📋 外部设备列表无变化")
         }
     }
     
@@ -32,18 +28,12 @@ extension ContentView {
             }
         }
         
-        print("🔔 设备监听已启动，每2秒检查一次")
     }
     
     // 推出外部设备
     func ejectDevice(device: ExternalDevice) {
-        print("🔌 开始推出单个设备: \(device.name)")
-        print("🔌 挂载点: \(device.mountPoint)")
-        print("🔌 设备URL: \(device.url.path)")
-        print("🔌 设备类型: \(device.deviceType)")
         
         let mountExists = FileManager.default.fileExists(atPath: device.mountPoint)
-        print("🔌 挂载点存在: \(mountExists)")
         
         if !mountExists {
             DispatchQueue.main.async {
@@ -58,7 +48,6 @@ extension ContentView {
         }
         
         guard device.mountPoint.starts(with: "/Volumes/") || device.mountPoint == "/" else {
-            print("❌ 无效的挂载点: \(device.mountPoint)")
             DispatchQueue.main.async {
                 let alert = NSAlert()
                 alert.messageText = "推出失败"
@@ -70,7 +59,6 @@ extension ContentView {
             return
         }
         
-        print("🔌 直接使用diskutil unmount命令")
         ExternalDeviceService.ejectWithDiskutil(device: device, command: "unmount") { success, errorOutput in
             if success {
                 self.handleEjectSuccess(device: device)
@@ -82,7 +70,6 @@ extension ContentView {
     
     // 处理推出成功
     func handleEjectSuccess(device: ExternalDevice) {
-        print("✅ 设备推出成功: \(device.name)")
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.detectExternalDevices()
@@ -91,7 +78,6 @@ extension ContentView {
     
     // 处理推出失败
     func handleEjectFailure(device: ExternalDevice, errorOutput: String) {
-        print("❌ 设备推出失败: \(device.name)")
         
         DispatchQueue.main.async {
             let alert = NSAlert()
@@ -111,7 +97,6 @@ extension ContentView {
     // 推出所有外部设备
     func ejectAllDevices() {
         guard !externalDevices.isEmpty else {
-            print("⚠️ 没有外部设备需要推出")
             
             let alert = NSAlert()
             alert.messageText = "没有外部设备"
@@ -122,7 +107,6 @@ extension ContentView {
             return
         }
         
-        print("🔌 开始批量推出 \(externalDevices.count) 个设备")
         
         // 初始化设备操作信息列表
         let deviceOperations = externalDevices.map { device -> DeviceOperationInfo in
@@ -148,8 +132,6 @@ extension ContentView {
             let totalDevices = self.externalDevices.count
             
             for (index, device) in self.externalDevices.enumerated() {
-                print("🔌 开始推出设备: \(device.name)")
-                print("🔌 挂载点: \(device.mountPoint)")
                 
                 // 更新设备状态为正在进行
                 DispatchQueue.main.async {
@@ -160,7 +142,6 @@ extension ContentView {
                 var operationSuccess = false
                 
                 if !FileManager.default.fileExists(atPath: device.mountPoint) {
-                    print("⚠️ 设备挂载点不存在: \(device.name)，可能已经被弹出")
                     // 挂载点不存在，视为推出成功
                     operationSuccess = true
                     successCount += 1
@@ -168,11 +149,9 @@ extension ContentView {
                     let workspaceResult = NSWorkspace.shared.unmountAndEjectDevice(atPath: device.mountPoint)
                     
                     if workspaceResult {
-                        print("✅ NSWorkspace推出成功: \(device.name)")
                         operationSuccess = true
                         successCount += 1
                     } else {
-                        print("❌ NSWorkspace推出失败，尝试diskutil: \(device.name)")
                         
                         let task = Process()
                         task.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
@@ -186,21 +165,17 @@ extension ContentView {
                             task.waitUntilExit()
                             
                             if task.terminationStatus == 0 {
-                                print("✅ diskutil推出成功: \(device.name)")
                                 operationSuccess = true
                                 successCount += 1
                             } else {
                                 let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                                 if let message = String(data: errorData, encoding: .utf8), !message.isEmpty {
-                                    print("❌ diskutil推出失败: \(device.name) - \(message)")
                                     errorMessage = message
                                 } else {
-                                    print("❌ diskutil推出失败: \(device.name) - 未知错误")
                                     errorMessage = "未知错误"
                                 }
                             }
                         } catch {
-                            print("❌ 执行diskutil命令失败: \(device.name) - \(error.localizedDescription)")
                             errorMessage = error.localizedDescription
                         }
                     }
@@ -218,7 +193,6 @@ extension ContentView {
                 
                 // 添加操作日志
                 let logMessage = "\(operationSuccess ? "✅" : "❌") \(device.name): \(operationSuccess ? "推出成功" : "推出失败")"
-                print(logMessage)
                 
                 DispatchQueue.main.async {
                     self.progressInfo.operationLog.append(logMessage)

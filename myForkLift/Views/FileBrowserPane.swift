@@ -310,18 +310,9 @@ struct FileBrowserPane: View {
         let isCommandPressed = modifierFlags.contains(.command)
         
         // 使用日志器记录调试信息
-        ShiftClickLogger.shared.log("=== CLICK DEBUG ===")
-        ShiftClickLogger.shared.log("File: \(item.lastPathComponent)")
-        ShiftClickLogger.shared.log("Raw modifierFlags: \(modifierFlags.rawValue)")
-        ShiftClickLogger.shared.log("Shift: \(isShiftPressed), Command: \(isCommandPressed)")
-        ShiftClickLogger.shared.log("Anchor before: \(selectionState.rangeSelectionAnchor?.lastPathComponent ?? "NONE")")
-        ShiftClickLogger.shared.log("lastShiftClickItem: \(selectionState.lastShiftClickItem?.lastPathComponent ?? "NONE")")
-        ShiftClickLogger.shared.log("Selected: \(selectedItems.count) items")
         if selectedItems.count <= 3 {
             let names = selectedItems.map { $0.lastPathComponent }.joined(separator: ", ")
-            ShiftClickLogger.shared.log("Selected items: \(names)")
         }
-        ShiftClickLogger.shared.log("=================")
         
         // 检测双击
         let currentTime = Date()
@@ -330,35 +321,28 @@ struct FileBrowserPane: View {
         
         if isDoubleClick {
             // 双击处理
-            print("  - 检测到双击")
             if isDirectory(item) {
                 currentURL = item
                 selectedItems.removeAll()
                 selectionState.reset()
-                print("  - 双击目录，清空锚点")
             } else {
                 selectedItems.removeAll()
                 selectedItems.insert(item)
                 NSWorkspace.shared.open(item)
-                print("  - 双击文件")
             }
         } else if isShiftPressed {
             // Shift+点击：范围选择
-            print("  - 执行Shift+点击处理")
             handleShiftClick(item: item)
         } else if isCommandPressed {
             // Command+点击：切换选择状态
-            print("  - 执行Command+点击处理")
             handleCommandClick(item: item)
         } else {
             // 普通点击：选中单个文件
-            ShiftClickLogger.shared.log("NORMAL CLICK - Setting anchor to: \(item.lastPathComponent)")
             selectedItems.removeAll()
             selectedItems.insert(item)
             // 普通点击时设置新的范围选择锚点
             selectionState.setAnchor(item)
             selectionState.lastShiftClickItem = item
-            ShiftClickLogger.shared.log("Anchor after normal click: \(selectionState.getAnchorInfo())")
         }
         
         selectionState.lastTapTime = currentTime
@@ -367,18 +351,13 @@ struct FileBrowserPane: View {
     
     // 处理Shift+点击：范围选择 - 简化版本
     private func handleShiftClick(item: URL) {
-        ShiftClickLogger.shared.log("=== SHIFT CLICK ===")
-        ShiftClickLogger.shared.log("Target: \(item.lastPathComponent)")
-        ShiftClickLogger.shared.log("Anchor: \(selectionState.rangeSelectionAnchor?.lastPathComponent ?? "NONE")")
         
         let anchor: URL
         if selectionState.rangeSelectionAnchor != nil {
             // 使用现有的锚点
             anchor = selectionState.rangeSelectionAnchor!
-            ShiftClickLogger.shared.log("Using existing rangeSelectionAnchor")
         } else {
             // 没有锚点，设置当前点击作为锚点
-            ShiftClickLogger.shared.log("No anchor, setting current item as anchor")
             selectedItems.removeAll()
             selectedItems.insert(item)
             selectionState.setAnchor(item)
@@ -386,14 +365,12 @@ struct FileBrowserPane: View {
             return
         }
         
-        ShiftClickLogger.shared.log("Using anchor: \(anchor.lastPathComponent)")
         
         // 执行范围选择 - 使用可靠的findItemIndex方法
         let fromIndex = findItemIndex(anchor)
         let toIndex = findItemIndex(item)
         
         guard let fromIdx = fromIndex, let toIdx = toIndex else {
-            ShiftClickLogger.shared.log("Cannot find indices, selecting single item")
             selectedItems.removeAll()
             selectedItems.insert(item)
             selectionState.setAnchor(item)
@@ -404,7 +381,6 @@ struct FileBrowserPane: View {
         let startIndex = min(fromIdx, toIdx)
         let endIndex = max(fromIdx, toIdx)
         
-        ShiftClickLogger.shared.log("Range: \(startIndex) to \(endIndex)")
         
         // 执行范围选择
         selectedItems.removeAll()
@@ -419,66 +395,51 @@ struct FileBrowserPane: View {
         selectionState.lastShiftClickItem = item
         
         // 验证状态是否正确设置
-        ShiftClickLogger.shared.log("After setting anchor - rangeSelectionAnchor: \(selectionState.rangeSelectionAnchor?.lastPathComponent ?? "STILL_NIL")")
         
-        ShiftClickLogger.shared.logItems(Array(selectedItems), prefix: "SELECTED")
-        ShiftClickLogger.shared.log("=== END SHIFT CLICK ===")
     }
     
     // 多种方式查找项目索引
     private func findItemIndex(_ item: URL) -> Int? {
-        ShiftClickLogger.shared.log("Finding index for: \(item.lastPathComponent)")
         
         // 方法1: 直接URL比较
         if let index = items.firstIndex(where: { $0 == item }) {
-            ShiftClickLogger.shared.log("Found by direct URL compare: \(index)")
             return index
         }
         
         // 方法2: lastPathComponent比较
         if let index = items.firstIndex(where: { $0.lastPathComponent == item.lastPathComponent }) {
-            ShiftClickLogger.shared.log("Found by filename: \(index)")
             return index
         }
         
         // 方法3: path比较
         if let index = items.firstIndex(where: { $0.path == item.path }) {
-            ShiftClickLogger.shared.log("Found by path: \(index)")
             return index
         }
         
         // 方法4: absoluteString比较
         if let index = items.firstIndex(where: { $0.absoluteString == item.absoluteString }) {
-            ShiftClickLogger.shared.log("Found by absoluteString: \(index)")
             return index
         }
         
-        ShiftClickLogger.shared.log("NOT FOUND by any method")
         return nil
     }
     
     // 处理Command+点击：切换选择状态
     private func handleCommandClick(item: URL) {
-        ShiftClickLogger.shared.log("COMMAND CLICK - \(item.lastPathComponent)")
         if selectedItems.contains(item) {
             selectedItems.remove(item)
-            ShiftClickLogger.shared.log("Removed from selection")
         } else {
             selectedItems.insert(item)
-            ShiftClickLogger.shared.log("Added to selection")
         }
         // Command+点击时也设置新的锚点
         selectionState.setAnchor(item)
         selectionState.lastShiftClickItem = item
-        ShiftClickLogger.shared.log("Command click set anchor to: \(item.lastPathComponent)")
     }
     
     // 范围选择函数
     private func performRangeSelection(fromItem: URL?, toItem: URL) {
-        print("=== RANGE SELECTION ===")
         
         guard let fromItem = fromItem else {
-            print("No fromItem, selecting single item")
             selectedItems.removeAll()
             selectedItems.insert(toItem)
             return
@@ -489,51 +450,40 @@ struct FileBrowserPane: View {
         let toIndex = items.firstIndex(where: { $0.absoluteString == toItem.absoluteString })
         
         guard let fromIdx = fromIndex, let toIdx = toIndex else {
-            print("Cannot find items, selecting single item")
             selectedItems.removeAll()
             selectedItems.insert(toItem)
             return
         }
         
-        print("From index: \(fromIdx) (\(fromItem.lastPathComponent))")
-        print("To index: \(toIdx) (\(toItem.lastPathComponent))")
         
         // 计算选择范围
         let startIndex = min(fromIdx, toIdx)
         let endIndex = max(fromIdx, toIdx)
         
-        print("Range: \(startIndex) to \(endIndex)")
         
         // 清空当前选择并添加范围内的所有项目
         selectedItems.removeAll()
         for index in startIndex...endIndex {
             if index < items.count {
                 selectedItems.insert(items[index])
-                print("Selected: \(items[index].lastPathComponent)")
             }
         }
         
-        print("Total selected: \(selectedItems.count)")
-        print("========================")
     }
     
     private func loadItems(resetSelection: Bool = true) {
-        NSLog("🔄 Loading items for directory: \(currentURL.path)")
         
         if !FileManager.default.fileExists(atPath: currentURL.path) {
-            NSLog("❌ Error: Path does not exist: \(currentURL.path)")
             items = []
             return
         }
         
         guard isDirectory(currentURL) else {
-            NSLog("❌ Error: \(currentURL.path) is not a directory")
             items = []
             return
         }
         
         let readable = FileManager.default.isReadableFile(atPath: currentURL.path)
-        NSLog("📖 Directory readable: \(readable) for path: \(currentURL.path)")
         
         // 直接加载本地文件列表
         do {
@@ -575,7 +525,6 @@ struct FileBrowserPane: View {
                 }
             }
             
-            NSLog("✅ Successfully loaded \(sortedItems.count) items for \(currentURL.path)")
             
             DispatchQueue.main.async {
                 self.items = sortedItems
@@ -585,7 +534,6 @@ struct FileBrowserPane: View {
                 }
             }
         } catch {
-            NSLog("❌ Error loading directory contents for \(currentURL.path): \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.items = []
                 if resetSelection {
@@ -606,7 +554,6 @@ struct FileBrowserPane: View {
                         components: pathComponents,
                         onActivate: onActivate,
                         setURL: { url in
-                            NSLog("📍 Path segment clicked: \(url.path)")
                             currentURL = url
                         },
                         isActive: isActive
@@ -913,7 +860,6 @@ struct FileBrowserPane: View {
                             Button(action: {
                                 // 先激活当前面板
                                 if !isActive {
-                                    print("🔥 复选框点击触发激活")
                                     onActivate()
                                 }
                                 
@@ -923,25 +869,20 @@ struct FileBrowserPane: View {
                                 let isShiftPressed = modifierFlags.contains(.shift)
                                 let isCommandPressed = modifierFlags.contains(.command)
                                 
-                                print("🔲 复选框点击 - Shift: \(isShiftPressed), Command: \(isCommandPressed)")
                                 
                                 if isShiftPressed {
                                     // Shift+点击复选框：执行范围选择
-                                    print("🔲 复选框Shift+点击，执行范围选择")
                                     handleShiftClick(item: item)
                                 } else if isCommandPressed {
                                     // Command+点击复选框：切换选择状态
-                                    print("🔲 复选框Command+点击，切换选择")
                                     handleCommandClick(item: item)
                                 } else {
                                     // 普通点击复选框：切换选择状态（保持原有行为）
                                     let previousCount = selectedItems.count
                                     if selectedItems.contains(item) {
                                         selectedItems.remove(item)
-                                        print("☑️ 复选框取消选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
                                     } else {
                                         selectedItems.insert(item)
-                                        print("☑️ 复选框添加选择: \(item.lastPathComponent), 选择数: \(previousCount) -> \(selectedItems.count)")
                                     }
                                     
                                     // 普通复选框点击也需要设置锚点以保持一致性
@@ -1002,10 +943,8 @@ struct FileBrowserPane: View {
                         }
                         .onDrag {
                             if isDirectory(item) {
-                                print("🎯 开始拖拽目录: \(item.lastPathComponent)")
                                 return NSItemProvider(object: item as NSURL)
                             } else {
-                                print("🚫 文件不支持拖拽: \(item.lastPathComponent)")
                                 return NSItemProvider()
                             }
                         }
@@ -1078,20 +1017,15 @@ struct FileBrowserPane: View {
         }
         .frame(minWidth: 300, minHeight: 200)
         .onAppear {
-            print("🎯🎯🎯 FileBrowserPane appeared - isActive: \(isActive)")
-            NSLog("🎯🎯🎯 FileBrowserPane appeared - isActive: \(isActive)")
             loadItems()
         }
         .onChange(of: currentURL) { newURL in
-            NSLog("📍 URL changed to: \(newURL.path)")
             loadItems()
         }
         .onChange(of: showHiddenFiles) { newValue in
-            NSLog("👁️ Show hidden files changed to: \(newValue)")
             loadItems()
         }
         .onChange(of: refreshTrigger) { _ in
-            NSLog("🔄 Refresh trigger changed, reloading items")
             loadItems(resetSelection: false)
         }
     }

@@ -16,7 +16,6 @@ struct CopyProgressView: View {
     
     var body: some View {
         VStack(spacing: 8) {
-            let _ = print("🔍 CopyProgressView渲染: \(progress.fileName), 进度: \(progress.progress), 完成: \(progress.isCompleted)")
             // 操作类型和文件名
             HStack {
                 Text(progress.operation == "copy" ? "复制" : "移动")
@@ -69,7 +68,6 @@ struct CopyProgressView: View {
                 // 取消按钮或完成状态
                 if !progress.isCompleted {
                     Button("取消") {
-                        print("🔴 取消按钮被点击")
                         onCancel()
                     }
                     .font(.system(size: 12, weight: .medium))
@@ -79,7 +77,6 @@ struct CopyProgressView: View {
                     .background(Color.blue)
                     .cornerRadius(4)
                     .onAppear {
-                        print("🔴 取消按钮出现，isCompleted: \(progress.isCompleted)")
                     }
                     .buttonStyle(PlainButtonStyle()) // 确保按钮样式正确应用
                 } else {
@@ -87,7 +84,6 @@ struct CopyProgressView: View {
                         .font(.caption)
                         .foregroundColor(.green)
                         .onAppear {
-                            print("🟢 完成状态显示，isCompleted: \(progress.isCompleted)")
                         }
                 }
             }

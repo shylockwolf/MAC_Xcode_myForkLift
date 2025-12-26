@@ -83,16 +83,13 @@ struct ContentView: View {
                 $0.name != "Home" && $0.name != "Documents"
             })
             UserDefaults.standard.set(data, forKey: viewModel.favoritesKey)
-            print("💾 已保存收藏夹到UserDefaults")
         } catch {
-            print("❌ 保存收藏夹失败: \(error.localizedDescription)")
         }
     }
     
     // 从UserDefaults加载收藏夹
     private func loadFavorites() {
         guard let data = UserDefaults.standard.data(forKey: viewModel.favoritesKey) else {
-            print("📂 没有找到保存的收藏夹数据")
             return
         }
         
@@ -110,9 +107,7 @@ struct ContentView: View {
                 FileManager.default.fileExists(atPath: fav.url.path)
             }
             
-            print("📂 成功加载收藏夹，共\(savedFavorites.count)个自定义收藏夹")
         } catch {
-            print("❌ 加载收藏夹失败: \(error.localizedDescription)")
         }
     }
     
@@ -170,13 +165,11 @@ struct ContentView: View {
     
     // 处理收藏夹重新排序
     private func handleFavoriteReorder(providers: [NSItemProvider], targetFavorite: FavoriteItem) -> Bool {
-        print("🎯 处理收藏夹重新排序到: \(targetFavorite.name)")
         
         for provider in providers {
             if provider.canLoadObject(ofClass: NSString.self) {
                 provider.loadObject(ofClass: NSString.self) { object, error in
                     if let error = error {
-                        print("❌ 重新排序加载失败: \(error.localizedDescription)")
                         return
                     }
                     
@@ -193,15 +186,12 @@ struct ContentView: View {
     
     // 重新排序收藏夹
     private func reorderFavorites(sourceName: String, targetFavorite: FavoriteItem) {
-        print("🔄 重新排序: \(sourceName) -> \(targetFavorite.name)")
         
         guard let sourceIndex = favorites.firstIndex(where: { $0.name == sourceName }) else {
-            print("❌ 找不到源收藏夹: \(sourceName)")
             return
         }
         
         guard let targetIndex = favorites.firstIndex(where: { $0.id == targetFavorite.id }) else {
-            print("❌ 找不到目标收藏夹: \(targetFavorite.name)")
             return
         }
         
@@ -209,7 +199,6 @@ struct ContentView: View {
         
         // 如果是同一个项目，不进行排序
         if sourceIndex == targetIndex {
-            print("⚠️ 同一个收藏夹，不需要排序")
             return
         }
         
@@ -232,38 +221,30 @@ struct ContentView: View {
         // 保存新的顺序
         saveFavorites()
         
-        print("🌟 收藏夹重新排序完成: \(sourceName) 移动到位置 \(newTargetIndex)")
     }
     
     // 处理拖拽drop
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        print("🎯 处理拖拽drop，provider数量: \(providers.count)")
         
         for provider in providers {
-            print("🔍 检查provider类型: \(provider.registeredTypeIdentifiers)")
             
             // 尝试多种方式获取URL
             if provider.canLoadObject(ofClass: URL.self) {
-                print("✅ 可以加载URL对象")
                 provider.loadObject(ofClass: URL.self) { (object, error) in
                     if let error = error {
-                        print("❌ 加载URL失败: \(error.localizedDescription)")
                         return
                     }
                     
                     if let url = object as? URL {
-                        print("📁 成功获取URL: \(url.path)")
                         DispatchQueue.main.async {
                             self.processDroppedURL(url)
                         }
                     }
                 }
             } else if provider.canLoadObject(ofClass: NSString.self) {
-                print("✅ 可以加载NSString")
                 provider.loadObject(ofClass: NSString.self) { object, error in
                     if let path = object as? String {
                         let url = URL(fileURLWithPath: path)
-                        print("📁 从字符串创建URL: \(url.path)")
                         DispatchQueue.main.async {
                             self.processDroppedURL(url)
                         }
@@ -276,23 +257,19 @@ struct ContentView: View {
     
     // 处理拖拽的URL
     private func processDroppedURL(_ url: URL) {
-        print("🔄 处理拖拽的URL: \(url.path)")
         
         // 检查是否是目录
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
-            print("❌ 路径不存在: \(url.path)")
             return
         }
         
         guard isDirectory.boolValue else {
-            print("❌ 只能添加目录到收藏夹，这是文件: \(url.path)")
             return
         }
         
         // 检查是否已经在收藏夹中
         if favorites.contains(where: { $0.url.path == url.path }) {
-            print("⚠️ 目录已在收藏夹中: \(url.lastPathComponent)")
             return
         }
         
@@ -310,7 +287,6 @@ struct ContentView: View {
         // 自动保存收藏夹
         saveFavorites()
         
-        print("🌟 成功添加收藏夹: \(url.lastPathComponent)")
     }
     
     var body: some View {
@@ -339,7 +315,6 @@ struct ContentView: View {
                 isPresented: $isProgressWindowPresented,
                 progressInfo: $progressInfo,
                 onCancel: { 
-                    print("❌ 操作被用户取消")
                     // 这里可以添加取消操作的具体逻辑
                 }
             )
@@ -502,7 +477,6 @@ struct ContentView: View {
                         }
                     }
                 } catch {
-                    print("❌ 获取目录内容失败: \(error.localizedDescription)")
                 }
             },
             onToggleHiddenFiles: {
@@ -590,9 +564,7 @@ struct ContentView: View {
                 selectedItems: $viewModel.leftSelectedItems,
                 isActive: viewModel.activePane == .left,
                 onActivate: { 
-                    print("🔥🔥🔥 左面板被激活了！当前激活: \(viewModel.activePane)")
                     viewModel.setActivePane(.left)
-                    print("🔥🔥🔥 左面板激活完成！新激活状态: \(viewModel.activePane)")
                 },
                 refreshTrigger: viewModel.refreshTrigger,
                 panelId: "left",
@@ -616,9 +588,7 @@ struct ContentView: View {
                 selectedItems: $viewModel.rightSelectedItems,
                 isActive: viewModel.activePane == .right,
                 onActivate: { 
-                    print("🔥🔥🔥 右面板被激活了！当前激活: \(viewModel.activePane)")
                     viewModel.setActivePane(.right)
-                    print("🔥🔥🔥 右面板激活完成！新激活状态: \(viewModel.activePane)")
                 },
                 refreshTrigger: viewModel.refreshTrigger,
                 panelId: "right",
@@ -685,8 +655,6 @@ struct ContentView: View {
     
     // 设置外观
     private func setupAppearance() {
-        print("🚀 应用启动，加载收藏夹和路径...")
-        print("🚀 启动时初始路径: 左=\(leftPaneURL.path), 右=\(rightPaneURL.path)")
         
         // 获取窗口引用
         getWindow()
@@ -695,7 +663,6 @@ struct ContentView: View {
         
         // 初始化设备检测
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            print("🔄 初始化外部设备检测...")
             self.detectExternalDevices()
             self.setupDeviceMonitoring()
         }
@@ -708,7 +675,6 @@ struct ContentView: View {
     
     // 加载初始路径
     private func loadInitialPaths() {
-        print("🔄 开始延迟加载窗口路径...")
         
         let defaults = viewModel.loadWindowPaths(
             defaultLeft: leftPaneURL,
@@ -718,14 +684,11 @@ struct ContentView: View {
         leftPaneURL = defaults.left
         rightPaneURL = defaults.right
         
-        print("📍 最终路径: 左=\(leftPaneURL.path), 右=\(rightPaneURL.path)")
         
         // 验证UserDefaults中的值
         if let savedLeft = UserDefaults.standard.string(forKey: viewModel.leftPaneURLKey),
            let savedRight = UserDefaults.standard.string(forKey: viewModel.rightPaneURLKey) {
-            print("📋 UserDefaults中的保存值: 左=\(savedLeft), 右=\(savedRight)")
         } else {
-            print("📋 UserDefaults中没有找到保存的路径")
         }
         
         // 加载窗口位置和大小
@@ -746,7 +709,6 @@ struct ContentView: View {
     
     // 处理URL变化
     private func handleURLChange(_ newURL: URL, pane: Pane) {
-        print("💾 \(pane == .left ? "左" : "右")面板路径变化，准备保存: \(newURL.path)")
         viewModel.saveWindowPaths(leftPaneURL: leftPaneURL, rightPaneURL: rightPaneURL)
     }
     
@@ -889,7 +851,6 @@ struct ContentView: View {
                 folders += result.folders
             }
         } catch {
-            print("❌ 计算文件和文件夹数量失败: \(error.localizedDescription)")
         }
         
         return (files, folders)
@@ -943,7 +904,6 @@ struct ContentView: View {
                     self.statisticsInfo.progress = progress
                 }
             } catch {
-                print("❌ 获取文件大小失败: \(error.localizedDescription)")
             }
             return
         }
@@ -978,15 +938,12 @@ struct ContentView: View {
                 )
             }
         } catch {
-            print("❌ 扫描目录失败: \(error.localizedDescription)")
         }
     }
     
     // 处理全部选中功能（Command-A快捷键）
     private func handleSelectAll() {
-        print("🔥 Command-A快捷键被触发！")
         let isLeftActive = viewModel.activePane == .left
-        print("🔥 当前激活面板：\(isLeftActive ? "左" : "右")")
         let currentURL = isLeftActive ? leftPaneURL : rightPaneURL
         
         do {
@@ -1013,7 +970,6 @@ struct ContentView: View {
                 }
             }
         } catch {
-            print("❌ 获取目录内容失败：\(error)")
         }
     }
 }

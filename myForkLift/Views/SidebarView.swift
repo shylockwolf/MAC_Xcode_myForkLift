@@ -69,7 +69,6 @@ extension URL {
             let values = try self.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             return values.volumeAvailableCapacityForImportantUsage
         } catch {
-            print("Error retrieving free disk space: \(error)")
             return nil
         }
     }
@@ -181,10 +180,8 @@ struct SidebarView: View {
                     switch activePane {
                     case .left:
                         leftPaneURL = device.url
-                        NSLog("📂 更新左面板到设备: \(device.url.path)")
                     case .right:
                         rightPaneURL = device.url
-                        NSLog("📂 更新右面板到设备: \(device.url.path)")
                     }
                 }
                 .contextMenu {
@@ -247,16 +244,13 @@ struct SidebarView: View {
                         onFavoriteReorder(providers, favorite)
                     }
                     .onTapGesture {
-                        NSLog("🌟 Navigating to favorite: \(favorite.name) - \(favorite.url.path) - 激活面板: \(activePane)")
                         
                         // 只更新当前激活的面板
                         switch activePane {
                         case .left:
                             leftPaneURL = favorite.url
-                            NSLog("📂 更新左面板到: \(favorite.url.path)")
                         case .right:
                             rightPaneURL = favorite.url
-                            NSLog("📂 更新右面板到: \(favorite.url.path)")
                         }
                     }
                 }

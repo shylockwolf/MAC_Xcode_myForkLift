@@ -19,7 +19,6 @@ class FileSelectionState: ObservableObject {
     // 设置锚点
     func setAnchor(_ url: URL) {
         rangeSelectionAnchor = url
-        print("🔑 FileSelectionState: Set anchor to \(url.lastPathComponent)")
     }
     
     // 获取锚点信息

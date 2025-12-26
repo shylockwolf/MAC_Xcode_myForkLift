@@ -107,7 +107,6 @@ extension ContentView {
         }
         
         guard !sourceItems.isEmpty else {
-            print("❌ 没有选中项可复制")
             showAlertSimple(title: "复制失败", message: "没有选中项可复制到剪贴板")
             return
         }
@@ -127,16 +126,13 @@ extension ContentView {
             let message = count == 1 ? 
                 "已复制1个项目到剪贴板" : 
                 "已复制\(count)个项目到剪贴板"
-            print("✅ \(message)")
         } else {
-            print("❌ 无法复制到剪贴板")
             showAlertSimple(title: "复制失败", message: "无法将选中项复制到剪贴板")
         }
     }
     
     // 取消复制操作
     func cancelCopyOperation() {
-        print("❌ 用户取消了复制操作")
         isCopyOperationCancelled = true
         showCopyProgress = false
         copyProgress = nil
@@ -161,7 +157,6 @@ extension ContentView {
         let sourceItems = Array(viewModel.getCurrentSelectedItems())
         
         guard !sourceItems.isEmpty else {
-            print("❌ 没有选中项可复制")
             return
         }
         
@@ -171,7 +166,6 @@ extension ContentView {
         do {
             try FileManager.default.createDirectory(at: targetURL, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            print("❌ 无法创建目标目录: \(targetURL.path) - \(error.localizedDescription)")
             showAlertSimple(title: "复制失败", message: "无法访问目标目录: \(error.localizedDescription)")
             return
         }
@@ -249,11 +243,8 @@ extension ContentView {
                 let fileExists = FileManager.default.fileExists(atPath: destinationURL.path)
                 
                 // 调试信息
-                print("🔧 移动操作: \(sourceURL.path) -> \(destinationURL.path)")
                 var isDirectory: ObjCBool = false
                 FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory)
-                print("🔧 源文件类型: \(isDirectory.boolValue ? "目录" : "文件")")
-                print("🔧 源文件大小: \(getFileSize(sourceURL)) 字节")
                 if fileExists {
                     if !shouldReplaceAll {
                         DispatchQueue.main.async {
@@ -515,14 +506,12 @@ extension ContentView {
                         }
                     }
                     
-                    print("✅ 成功复制: \(sourceURL.lastPathComponent) 到 \(targetURL.path)")
                     successCount += 1
                     
                 } catch {
                     // 检查是否为取消操作，如果是则不显示错误消息
                     let nsError = error as NSError
                     if nsError.code == -999 && nsError.domain == "DWBrowser" {
-                        print("🚫 用户取消了复制操作: \(sourceURL.lastPathComponent)")
                         // 不添加到错误消息列表
                         // 取消所有文件的复制，跳出循环
                         break
@@ -531,7 +520,6 @@ extension ContentView {
                         DispatchQueue.main.async {
                             errorMessages.append(errorMessage)
                         }
-                        print("❌ 复制失败: \(errorMessage)")
                     }
                 }
             }
@@ -541,7 +529,6 @@ extension ContentView {
                     let message = sourceItems.count == 1 ?
                         "成功复制 \(successCount) 个文件" :
                         "成功复制 \(successCount) 个文件（共 \(sourceItems.count) 个）"
-                    print("✅ \(message)")
                 }
                 
                 if !errorMessages.isEmpty {
@@ -555,7 +542,6 @@ extension ContentView {
                 let targetPaneURL = self.viewModel.activePane == .right ? self.leftPaneURL : self.rightPaneURL
                 
                 // 普通刷新
-                print("🔧🔄 普通刷新")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.viewModel.triggerRefresh()
                 }
@@ -568,7 +554,6 @@ extension ContentView {
         let itemsToTrash = viewModel.getCurrentSelectedItems()
         
         guard !itemsToTrash.isEmpty else {
-            print("❌ 没有选中项可移到垃圾箱")
             return
         }
         
@@ -578,12 +563,10 @@ extension ContentView {
             
             for itemURL in itemsToTrash {
                 if FileOperationService.moveItemToTrashSync(itemURL) {
-                    print("✅ 成功移到垃圾箱: \(itemURL.lastPathComponent)")
                     successCount += 1
                 } else {
                     let errorMessage = "\(itemURL.lastPathComponent): 移动失败"
                     errorMessages.append(errorMessage)
-                    print("❌ 移到垃圾箱失败: \(itemURL.lastPathComponent)")
                 }
             }
             
@@ -592,7 +575,6 @@ extension ContentView {
                     let message = itemsToTrash.count == 1 ?
                         "成功将 \(successCount) 个文件移到垃圾箱" :
                         "成功将 \(successCount) 个文件移到垃圾箱（共 \(itemsToTrash.count) 个）"
-                    print("✅ \(message)")
                 }
                 
                 self.viewModel.clearAllSelections()
@@ -619,7 +601,6 @@ extension ContentView {
         let sourceItems = Array(viewModel.getCurrentSelectedItems())
         
         guard !sourceItems.isEmpty else {
-            print("❌ 没有选中项可移动")
             return
         }
         
@@ -716,11 +697,8 @@ extension ContentView {
                 let fileExists = FileManager.default.fileExists(atPath: destinationURL.path)
                 
                 // 调试信息
-                print("🔧 移动操作: \(sourceURL.path) -> \(destinationURL.path)")
                 var isDirectory: ObjCBool = false
                 FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory)
-                print("🔧 源文件类型: \(isDirectory.boolValue ? "目录" : "文件")")
-                print("🔧 源文件大小: \(getFileSize(sourceURL)) 字节")
                 if fileExists {
                     if shouldSkipAll {
                         DispatchQueue.main.async {
@@ -1004,24 +982,19 @@ extension ContentView {
                         }
                     }
                     
-                    print("✅ 成功移动: \(sourceURL.lastPathComponent) 到 \(targetPaneURL.path)")
                     successCount += 1
                 } catch {
                     // 检查是否为取消操作，如果是则不显示错误消息
                     let nsError = error as NSError
                     if nsError.code == -999 && nsError.domain == "DWBrowser" {
-                        print("🚫 用户取消了移动操作: \(sourceURL.lastPathComponent)")
                         // 不添加到错误消息列表
                         // 取消所有文件的移动，跳出循环
                         break
                     } else {
                         let errorMessage = "\(sourceURL.lastPathComponent): \(error.localizedDescription)"
-                        print("🔧🔧🔧 移动失败详细错误: \(error)")
-                        print("🔧🔧🔧 错误描述: \(errorMessage)")
                         DispatchQueue.main.async {
                             errorMessages.append(errorMessage)
                         }
-                        print("❌ 移动失败: \(errorMessage)")
                     }
                 }
             }
@@ -1031,7 +1004,6 @@ extension ContentView {
                     let message = sourceItems.count == 1 ?
                         "成功移动 \(successCount) 个文件" :
                         "成功移动 \(successCount) 个文件（共 \(sourceItems.count) 个）"
-                    print("✅ \(message)")
                 }
                 
                 if !errorMessages.isEmpty {
@@ -1045,7 +1017,6 @@ extension ContentView {
                 let targetPaneURL = self.viewModel.activePane == .right ? self.leftPaneURL : self.rightPaneURL
                 
                 // 普通刷新
-                print("🔧🔄 普通刷新")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.viewModel.triggerRefresh()
                 }
@@ -1086,13 +1057,11 @@ extension ContentView {
             
             do {
                 try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false, attributes: nil)
-                print("✅ 成功创建文件夹: \(folderName)")
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     viewModel.triggerRefresh()
                 }
             } catch {
-                print("❌ 创建文件夹失败: \(error.localizedDescription)")
                 showAlertSimple(title: "创建失败", message: error.localizedDescription)
             }
         }
@@ -1112,20 +1081,17 @@ extension ContentView {
     func pasteItem() {
         let pasteboard = NSPasteboard.general
         guard let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] else {
-            print("❌ 剪贴板中没有文件URL")
             showAlertSimple(title: "粘贴失败", message: "剪贴板中没有可粘贴的文件")
             return
         }
         
         let targetURL = getCurrentPaneURL()
         let activePane = viewModel.activePane
-        print("🔥 开始粘贴操作，目标面板: \(activePane == .left ? "左" : "右")，目标目录: \(targetURL.path)")
         
         // 确保目标目录存在
         do {
             try FileManager.default.createDirectory(at: targetURL, withIntermediateDirectories: true, attributes: nil)
         } catch {
-            print("❌ 无法创建目标目录: \(targetURL.path) - \(error.localizedDescription)")
             showAlertSimple(title: "粘贴失败", message: "无法访问目标目录: \(error.localizedDescription)")
             return
         }
@@ -1198,14 +1164,12 @@ extension ContentView {
                     // 复制文件
                     try FileManager.default.copyItem(at: url, to: destinationURL)
                     
-                    print("✅ 成功粘贴: \(url.lastPathComponent) 到 \(targetURL.path)")
                     successCount += 1
                 } catch {
                     let errorMessage = "\(url.lastPathComponent): \(error.localizedDescription)"
                     DispatchQueue.main.async {
                         errorMessages.append(errorMessage)
                     }
-                    print("❌ 粘贴失败: \(errorMessage)")
                 }
             }
             
@@ -1214,7 +1178,6 @@ extension ContentView {
                     let message = urls.count == 1 ?
                         "成功粘贴 \(successCount) 个文件" :
                         "成功粘贴 \(successCount) 个文件（共 \(urls.count) 个）"
-                    print("✅ \(message)")
                 }
                 
                 if !errorMessages.isEmpty {
