@@ -84,7 +84,10 @@ struct FileBrowserPane: View {
                 onCopy()
                 return
             } else if key == "v" {
-                onPaste()
+                // 只有激活的面板才处理粘贴操作，避免重复执行
+                if isActive {
+                    onPaste()
+                }
                 return
             }
         }

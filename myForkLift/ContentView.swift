@@ -373,9 +373,7 @@ struct ContentView: View {
         .overlay(
             // 添加键盘快捷键处理器
             KeyboardShortcutHandler(
-                onSelectAll: { handleSelectAll() },
-                onCopy: { copyItem() },
-                onPaste: { pasteItem() }
+                onSelectAll: { handleSelectAll() }
             )
             .allowsHitTesting(false) // 允许鼠标事件穿透，不影响底层视图点击
         )

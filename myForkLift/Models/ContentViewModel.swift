@@ -281,6 +281,13 @@ final class ContentViewModel: ObservableObject {
         return nsUrls.map { $0 as URL }
     }
     
+    /// 粘贴操作策略枚举
+    private enum PasteStrategy {
+        case askEachTime // 每次都询问
+        case overwriteAll // 覆盖所有
+        case skipAll // 跳过所有
+    }
+    
     /// 将剪贴板中的文件粘贴到指定目录
     func pasteItemsToDirectory(_ targetDirectory: URL) -> (success: Bool, message: String) {
         let urlsToPaste = getURLsFromClipboard()
@@ -291,6 +298,7 @@ final class ContentViewModel: ObservableObject {
         let fileManager = FileManager.default
         var successCount = 0
         var errorCount = 0
+        var pasteStrategy: PasteStrategy = .askEachTime
         
         for sourceURL in urlsToPaste {
             let fileName = sourceURL.lastPathComponent
@@ -298,28 +306,82 @@ final class ContentViewModel: ObservableObject {
             
             // 检查目标文件是否已存在
             if fileManager.fileExists(atPath: destinationURL.path) {
-                // 如果目标文件已存在，添加一个数字后缀
-                let fileExtension = sourceURL.pathExtension
-                let fileNameWithoutExtension = fileExtension.isEmpty ? 
-                    sourceURL.deletingPathExtension().lastPathComponent : 
-                    sourceURL.deletingPathExtension().lastPathComponent
-                
-                var counter = 1
-                var uniqueDestinationURL: URL
-                
-                repeat {
-                    let newFileName = fileExtension.isEmpty ? 
-                        "\(fileNameWithoutExtension) \(counter)" : 
-                        "\(fileNameWithoutExtension) \(counter).\(fileExtension)"
-                    uniqueDestinationURL = targetDirectory.appendingPathComponent(newFileName)
-                    counter += 1
-                } while fileManager.fileExists(atPath: uniqueDestinationURL.path)
-                
-                do {
-                    try fileManager.copyItem(at: sourceURL, to: uniqueDestinationURL)
-                    successCount += 1
-                } catch {
-                    errorCount += 1
+                // 根据策略处理文件
+                switch pasteStrategy {
+                case .overwriteAll:
+                    // 覆盖所有
+                    do {
+                        try fileManager.removeItem(at: destinationURL)
+                        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+                        successCount += 1
+                    } catch {
+                        errorCount += 1
+                    }
+                    continue
+                case .skipAll:
+                    // 跳过所有
+                    continue
+                case .askEachTime:
+                    // 如果目标文件已存在，显示确认对话框
+                    let alert = NSAlert()
+                    alert.messageText = "文件已存在"
+                    alert.informativeText = "\"\(fileName)\" 已存在于当前目录。您想要如何操作？"
+                    alert.addButton(withTitle: "覆盖")
+                    alert.addButton(withTitle: "跳过")
+                    alert.addButton(withTitle: "创建副本")
+                    alert.addButton(withTitle: "覆盖所有")
+                    alert.addButton(withTitle: "跳过所有")
+                    
+                    let response = alert.runModal()
+                    
+                    switch response {
+                    case .alertFirstButtonReturn: // 覆盖
+                        do {
+                            try fileManager.removeItem(at: destinationURL)
+                            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+                            successCount += 1
+                        } catch {
+                            errorCount += 1
+                        }
+                    case .alertSecondButtonReturn: // 跳过
+                        continue
+                    case .alertThirdButtonReturn: // 创建副本
+                        let fileExtension = sourceURL.pathExtension
+                        let fileNameWithoutExtension = fileExtension.isEmpty ? 
+                            sourceURL.deletingPathExtension().lastPathComponent : 
+                            sourceURL.deletingPathExtension().lastPathComponent
+                        
+                        var counter = 1
+                        var uniqueDestinationURL: URL
+                        
+                        repeat {
+                            let newFileName = fileExtension.isEmpty ? 
+                                "\(fileNameWithoutExtension) \(counter)" : 
+                                "\(fileNameWithoutExtension) \(counter).\(fileExtension)"
+                            uniqueDestinationURL = targetDirectory.appendingPathComponent(newFileName)
+                            counter += 1
+                        } while fileManager.fileExists(atPath: uniqueDestinationURL.path)
+                        
+                        do {
+                            try fileManager.copyItem(at: sourceURL, to: uniqueDestinationURL)
+                            successCount += 1
+                        } catch {
+                            errorCount += 1
+                        }
+                    case NSApplication.ModalResponse(rawValue: 1003): // 覆盖所有（第4个按钮）
+                        pasteStrategy = .overwriteAll
+                        do {
+                            try fileManager.removeItem(at: destinationURL)
+                            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+                            successCount += 1
+                        } catch {
+                            errorCount += 1
+                        }
+                    case NSApplication.ModalResponse(rawValue: 1004): // 跳过所有（第5个按钮）
+                        pasteStrategy = .skipAll
+                    default:
+                        continue
+                    }
                 }
             } else {
                 do {

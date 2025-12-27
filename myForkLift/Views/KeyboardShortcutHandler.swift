@@ -6,36 +6,21 @@
 //
 
 import SwiftUI
-import AppKit
+import Cocoa
 
-/// 键盘快捷键处理器
 struct KeyboardShortcutHandler: NSViewRepresentable {
     var onSelectAll: () -> Void
-    var onCopy: () -> Void
-    var onPaste: () -> Void
-    
+
     class Coordinator: NSObject {
         var onSelectAll: () -> Void
-        var onCopy: () -> Void
-        var onPaste: () -> Void
         var eventMonitor: Any?
-        
-        init(onSelectAll: @escaping () -> Void, onCopy: @escaping () -> Void, onPaste: @escaping () -> Void) {
+
+        init(onSelectAll: @escaping () -> Void) {
             self.onSelectAll = onSelectAll
-            self.onCopy = onCopy
-            self.onPaste = onPaste
         }
-        
+
         @objc func handleSelectAll(_ sender: Any?) {
             onSelectAll()
-        }
-        
-        @objc func handleCopy(_ sender: Any?) {
-            onCopy()
-        }
-        
-        @objc func handlePaste(_ sender: Any?) {
-            onPaste()
         }
         
         func startMonitoring() {
@@ -78,7 +63,7 @@ struct KeyboardShortcutHandler: NSViewRepresentable {
     }
     
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSelectAll: onSelectAll, onCopy: onCopy, onPaste: onPaste)
+        Coordinator(onSelectAll: onSelectAll)
     }
     
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
