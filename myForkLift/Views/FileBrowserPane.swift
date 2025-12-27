@@ -293,8 +293,27 @@ struct FileBrowserPane: View {
         return components
     }
     
-    // 简化的文件点击处理
-    private func handleFileClick(item: URL) {
+    // 双击处理
+    private func handleDoubleClick(item: URL) {
+        // 激活窗口
+        if !isActive {
+            onActivate()
+        }
+        
+        // 双击处理
+        if isDirectory(item) {
+            currentURL = item
+            selectedItems.removeAll()
+            selectionState.reset()
+        } else {
+            selectedItems.removeAll()
+            selectedItems.insert(item)
+            NSWorkspace.shared.open(item)
+        }
+    }
+    
+    // 单击处理
+    private func handleSingleClick(item: URL) {
         // 设置为非键盘选择
         isKeyboardSelection = false
         
@@ -309,28 +328,7 @@ struct FileBrowserPane: View {
         let isShiftPressed = modifierFlags.contains(.shift)
         let isCommandPressed = modifierFlags.contains(.command)
         
-        // 使用日志器记录调试信息
-        if selectedItems.count <= 3 {
-            let names = selectedItems.map { $0.lastPathComponent }.joined(separator: ", ")
-        }
-        
-        // 检测双击
-        let currentTime = Date()
-        let timeSinceLastTap = currentTime.timeIntervalSince(selectionState.lastTapTime)
-        let isDoubleClick = timeSinceLastTap < 0.2 && selectionState.lastTapItem == item
-        
-        if isDoubleClick {
-            // 双击处理
-            if isDirectory(item) {
-                currentURL = item
-                selectedItems.removeAll()
-                selectionState.reset()
-            } else {
-                selectedItems.removeAll()
-                selectedItems.insert(item)
-                NSWorkspace.shared.open(item)
-            }
-        } else if isShiftPressed {
+        if isShiftPressed {
             // Shift+点击：范围选择
             handleShiftClick(item: item)
         } else if isCommandPressed {
@@ -344,9 +342,6 @@ struct FileBrowserPane: View {
             selectionState.setAnchor(item)
             selectionState.lastShiftClickItem = item
         }
-        
-        selectionState.lastTapTime = currentTime
-        selectionState.lastTapItem = item
     }
     
     // 处理Shift+点击：范围选择 - 简化版本
@@ -937,9 +932,13 @@ struct FileBrowserPane: View {
                             Spacer()
                         }
                         .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            // 双击处理
+                            handleDoubleClick(item: item)
+                        }
                         .onTapGesture {
-                            // 简化的文件点击处理
-                            handleFileClick(item: item)
+                            // 单击处理
+                            handleSingleClick(item: item)
                         }
                         .onDrag {
                             if isDirectory(item) {
