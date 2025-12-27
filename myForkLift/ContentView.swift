@@ -576,6 +576,7 @@ struct ContentView: View {
                 refreshTrigger: viewModel.refreshTrigger,
                 panelId: "left",
                 selectionState: viewModel.leftSelectionState,
+                viewModel: viewModel,
                 showFileSize: $leftShowFileSize,
                 showFileDate: $leftShowFileDate,
                 showFileType: $leftShowFileType
@@ -609,6 +610,7 @@ struct ContentView: View {
                 refreshTrigger: viewModel.refreshTrigger,
                 panelId: "right",
                 selectionState: viewModel.rightSelectionState,
+                viewModel: viewModel,
                 showFileSize: $rightShowFileSize,
                 showFileDate: $rightShowFileDate,
                 showFileType: $rightShowFileType

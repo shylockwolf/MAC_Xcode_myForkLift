@@ -408,6 +408,56 @@ final class ContentViewModel: ObservableObject {
         return pasteItemsToDirectory(targetDirectory)
     }
     
+    /// 压缩指定的文件或目录
+    func compressItem(_ url: URL) {
+        // 生成压缩文件路径（原文件名.zip）
+        let destinationURL = url.deletingLastPathComponent().appendingPathComponent(url.lastPathComponent + ".zip")
+        
+        // 创建进程执行zip命令
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        
+        // 对于目录使用-r选项进行递归压缩
+        let isDirectory = url.hasDirectoryPath
+        let arguments: [String]
+        if isDirectory {
+            // 压缩目录时使用-r选项，并且将内容直接放在zip文件根目录
+            let directoryName = url.lastPathComponent
+            arguments = ["-r", destinationURL.path, directoryName]
+            task.currentDirectoryURL = url.deletingLastPathComponent()
+        } else {
+            // 压缩单个文件
+            arguments = [destinationURL.path, url.lastPathComponent]
+            task.currentDirectoryURL = url.deletingLastPathComponent()
+        }
+        
+        task.arguments = arguments
+        
+        // 创建输出管道捕获错误信息
+        let errorPipe = Pipe()
+        task.standardError = errorPipe
+        
+        do {
+            // 启动进程
+            try task.run()
+            task.waitUntilExit()
+            
+            // 检查执行结果
+            if task.terminationStatus == 0 {
+                // 压缩成功，刷新文件列表
+                triggerRefresh()
+            } else {
+                // 压缩失败，读取错误信息
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                if let errorString = String(data: errorData, encoding: .utf8) {
+                    print("压缩失败: \(errorString)")
+                }
+            }
+        } catch {
+            print("执行压缩命令失败: \(error)")
+        }
+    }
+    
     // MARK: - 目录历史记录管理方法
     
     /// 将URL添加到指定面板的历史记录

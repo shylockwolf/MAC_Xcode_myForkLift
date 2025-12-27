@@ -70,6 +70,7 @@ struct FileBrowserPane: View {
     let refreshTrigger: UUID
     let panelId: String // 用于识别是左面板还是右面板
     @ObservedObject var selectionState: FileSelectionState
+    @ObservedObject var viewModel: ContentViewModel
     @State private var items: [URL] = []
     @State private var cancellables = Set<AnyCancellable>()
     @State private var keyboardFocusView: NSView?
@@ -1041,6 +1042,31 @@ struct FileBrowserPane: View {
                             }
                             
                             Divider()
+                            
+                            // 为APP目录添加"添加到运行面板"菜单项
+                            if isApplication(item) {
+                                Button(action: {
+                                    // 确保不重复添加
+                                    if !viewModel.openedFiles.contains(item) {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            viewModel.openedFiles.append(item)
+                                        }
+                                    }
+                                }) {
+                                    Text("添加到运行面板")
+                                    Image(systemName: "plus.circle")
+                                }
+                            }
+                            
+                            // 压缩菜单项 - 仅当单个文件或目录被选中时显示
+                            if selectedItems.count == 1 && selectedItems.contains(item) {
+                                Button(action: {
+                                    viewModel.compressItem(item)
+                                }) {
+                                    Text("压缩")
+                                    Image(systemName: "doc.zipper")
+                                }
+                            }
                             
                             Button(action: {
                                 if isDirectory(item) {
