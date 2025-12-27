@@ -51,6 +51,18 @@ class KeyboardCaptureView: NSView {
             return
         }
         
+        // 处理带修饰键的组合键
+        if modifierFlags.contains(.command) {
+            if let chars = event.charactersIgnoringModifiers, chars.count == 1 {
+                // 处理command-c, command-v等快捷键
+                let key = chars.lowercased()
+                if key == "c" || key == "v" {
+                    onSpecialKey(key, modifierFlags)
+                    return
+                }
+            }
+        }
+        
         // 处理字母键
         guard let chars = event.charactersIgnoringModifiers, chars.count == 1 else {
             return

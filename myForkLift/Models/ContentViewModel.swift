@@ -229,6 +229,19 @@ final class ContentViewModel: ObservableObject {
         return getCurrentSelectedItems().first
     }
     
+    /// 将选中的文件/文件夹复制到系统剪贴板
+    func copySelectedItemsToClipboard() {
+        let selectedItems = getCurrentSelectedItems()
+        guard !selectedItems.isEmpty else {
+            return
+        }
+        
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let nsUrls = selectedItems.map { $0 as NSURL }
+        _ = pasteboard.writeObjects(nsUrls)
+    }
+    
     /// 清空两个面板的所有选中状态
     func clearAllSelections() {
         leftSelectedItems.removeAll()
@@ -257,6 +270,80 @@ final class ContentViewModel: ObservableObject {
     /// 触发文件列表刷新
     func triggerRefresh() {
         refreshTrigger = UUID()
+    }
+    
+    /// 从系统剪贴板获取文件URLs
+    func getURLsFromClipboard() -> [URL] {
+        let pasteboard = NSPasteboard.general
+        guard let nsUrls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [NSURL] else {
+            return []
+        }
+        return nsUrls.map { $0 as URL }
+    }
+    
+    /// 将剪贴板中的文件粘贴到指定目录
+    func pasteItemsToDirectory(_ targetDirectory: URL) -> (success: Bool, message: String) {
+        let urlsToPaste = getURLsFromClipboard()
+        guard !urlsToPaste.isEmpty else {
+            return (false, "剪贴板中没有可粘贴的文件")
+        }
+        
+        let fileManager = FileManager.default
+        var successCount = 0
+        var errorCount = 0
+        
+        for sourceURL in urlsToPaste {
+            let fileName = sourceURL.lastPathComponent
+            let destinationURL = targetDirectory.appendingPathComponent(fileName)
+            
+            // 检查目标文件是否已存在
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                // 如果目标文件已存在，添加一个数字后缀
+                let fileExtension = sourceURL.pathExtension
+                let fileNameWithoutExtension = fileExtension.isEmpty ? 
+                    sourceURL.deletingPathExtension().lastPathComponent : 
+                    sourceURL.deletingPathExtension().lastPathComponent
+                
+                var counter = 1
+                var uniqueDestinationURL: URL
+                
+                repeat {
+                    let newFileName = fileExtension.isEmpty ? 
+                        "\(fileNameWithoutExtension) \(counter)" : 
+                        "\(fileNameWithoutExtension) \(counter).\(fileExtension)"
+                    uniqueDestinationURL = targetDirectory.appendingPathComponent(newFileName)
+                    counter += 1
+                } while fileManager.fileExists(atPath: uniqueDestinationURL.path)
+                
+                do {
+                    try fileManager.copyItem(at: sourceURL, to: uniqueDestinationURL)
+                    successCount += 1
+                } catch {
+                    errorCount += 1
+                }
+            } else {
+                do {
+                    try fileManager.copyItem(at: sourceURL, to: destinationURL)
+                    successCount += 1
+                } catch {
+                    errorCount += 1
+                }
+            }
+        }
+        
+        if successCount > 0 && errorCount == 0 {
+            return (true, "已成功粘贴\(successCount)个项目")
+        } else if successCount > 0 && errorCount > 0 {
+            return (false, "部分粘贴成功：\(successCount)个项目成功，\(errorCount)个项目失败")
+        } else {
+            return (false, "所有项目粘贴失败")
+        }
+    }
+    
+    /// 将剪贴板中的文件粘贴到当前激活的面板目录
+    func pasteItemsToCurrentActivePane(leftURL: URL, rightURL: URL) -> (success: Bool, message: String) {
+        let targetDirectory = activePane == .left ? leftURL : rightURL
+        return pasteItemsToDirectory(targetDirectory)
     }
     
     // MARK: - 目录历史记录管理方法

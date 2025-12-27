@@ -46,14 +46,6 @@ struct KeyboardShortcutHandler: NSViewRepresentable {
                         // Command-A：全选
                         self.handleSelectAll(nil)
                         return nil // 消耗事件
-                    case "c":
-                        // Command-C：复制
-                        self.handleCopy(nil)
-                        return nil // 消耗事件
-                    case "v":
-                        // Command-V：粘贴
-                        self.handlePaste(nil)
-                        return nil // 消耗事件
                     default:
                         break
                     }

@@ -566,6 +566,15 @@ struct ContentView: View {
                 onActivate: { 
                     viewModel.setActivePane(.left)
                 },
+                onCopy: { 
+                    viewModel.copySelectedItemsToClipboard()
+                },
+                onPaste: { 
+                    let result = viewModel.pasteItemsToCurrentActivePane(leftURL: leftPaneURL, rightURL: rightPaneURL)
+                    if result.success {
+                        viewModel.triggerRefresh()
+                    }
+                },
                 refreshTrigger: viewModel.refreshTrigger,
                 panelId: "left",
                 selectionState: viewModel.leftSelectionState,
@@ -589,6 +598,15 @@ struct ContentView: View {
                 isActive: viewModel.activePane == .right,
                 onActivate: { 
                     viewModel.setActivePane(.right)
+                },
+                onCopy: { 
+                    viewModel.copySelectedItemsToClipboard()
+                },
+                onPaste: { 
+                    let result = viewModel.pasteItemsToCurrentActivePane(leftURL: leftPaneURL, rightURL: rightPaneURL)
+                    if result.success {
+                        viewModel.triggerRefresh()
+                    }
                 },
                 refreshTrigger: viewModel.refreshTrigger,
                 panelId: "right",

@@ -25,6 +25,8 @@ struct FileBrowserPane: View {
     @Binding var selectedItems: Set<URL>
     let isActive: Bool
     let onActivate: () -> Void
+    let onCopy: () -> Void
+    let onPaste: () -> Void
     let refreshTrigger: UUID
     let panelId: String // 用于识别是左面板还是右面板
     @ObservedObject var selectionState: FileSelectionState
@@ -75,6 +77,17 @@ struct FileBrowserPane: View {
     /// 处理特殊键盘操作（如方向键导航）
     func handleSpecialKey(_ key: String, modifier: NSEvent.ModifierFlags) {
         guard !items.isEmpty else { return }
+        
+        // 处理复制粘贴快捷键
+        if modifier.contains(.command) {
+            if key == "c" {
+                onCopy()
+                return
+            } else if key == "v" {
+                onPaste()
+                return
+            }
+        }
         
         switch key {
         case "up", "down", "left", "right":
