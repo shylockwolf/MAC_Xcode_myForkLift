@@ -10,6 +10,46 @@ import Foundation
 import AppKit
 import Combine
 
+/// 将NSImage包装为SwiftUI视图
+struct NSImageWrapper: NSViewRepresentable {
+    let image: NSImage
+    let desiredSize: NSSize
+    
+    init(image: NSImage, desiredSize: NSSize) {
+        self.image = image
+        self.desiredSize = desiredSize
+    }
+    
+    func makeNSView(context: Context) -> NSImageView {
+        let imageView = NSImageView()
+        // 调整图标大小
+        let resizedImage = NSImage(size: desiredSize)
+        resizedImage.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: desiredSize), 
+                 from: .zero, 
+                 operation: .sourceOver, 
+                 fraction: 1.0)
+        resizedImage.unlockFocus()
+        
+        imageView.image = resizedImage
+        imageView.imageScaling = .scaleNone
+        return imageView
+    }
+    
+    func updateNSView(_ nsView: NSImageView, context: Context) {
+        // 调整图标大小
+        let resizedImage = NSImage(size: desiredSize)
+        resizedImage.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: desiredSize), 
+                 from: .zero, 
+                 operation: .sourceOver, 
+                 fraction: 1.0)
+        resizedImage.unlockFocus()
+        
+        nsView.image = resizedImage
+    }
+}
+
 /// 排序字段枚举
 enum SortField {
     case name
@@ -163,9 +203,17 @@ struct FileBrowserPane: View {
         return isDir.boolValue
     }
     
+    /// 检查是否是MAC OS的APP目录（以.app结尾的目录）
+    private func isApplication(_ url: URL) -> Bool {
+        let resolvedURL = url.resolvingSymlinksInPath()
+        return isDirectory(resolvedURL) && resolvedURL.lastPathComponent.hasSuffix(".app")
+    }
+    
     // 获取文件类型
     private func getFileType(_ url: URL) -> String {
-        if isDirectory(url) {
+        if isApplication(url) {
+            return "MAC APP"
+        } else if isDirectory(url) {
             return "文件夹"
         }
         
@@ -506,10 +554,17 @@ struct FileBrowserPane: View {
             let sortedItems = filteredContents.sorted { a, b in
                 let isDirA = isDirectory(a)
                 let isDirB = isDirectory(b)
+                let isAppA = isApplication(a)
+                let isAppB = isApplication(b)
                 
                 // 首先按目录/文件类型排序（目录总是在前面）
                 if isDirA != isDirB {
                     return isDirA
+                }
+                
+                // 如果都是目录，再按是否是APP分组（APP总是在前面）
+                if isDirA && isDirB && isAppA != isAppB {
+                    return isAppA
                 }
                 
                 // 然后按选定的字段排序
@@ -908,9 +963,16 @@ struct FileBrowserPane: View {
                             .frame(width: 20)
                             
                             // 文件图标
-                            Image(systemName: isDirectory(item) ? "folder" : "doc")
-                                .foregroundColor(isDirectory(item) ? .blue : .gray)
-                                .frame(width: 20)
+                            if isApplication(item) {
+                                // 显示APP的实际图标，大小15x15
+                                NSImageWrapper(image: NSWorkspace.shared.icon(forFile: item.path), desiredSize: NSSize(width: 15, height: 15))
+                                    .frame(width: 15, height: 15)
+                            } else {
+                                // 显示系统图标，大小15x15
+                                Image(systemName: isDirectory(item) ? "folder" : "doc")
+                                    .foregroundColor(isDirectory(item) ? .blue : .gray)
+                                    .frame(width: 15, height: 15)
+                            }
                             
                             // 文件名
                             Text(item.lastPathComponent)
